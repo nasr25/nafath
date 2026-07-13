@@ -20,5 +20,5 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 // Nafath (IAM) OIDC endpoints
-Route::get('/nafath/authorize', [NafathController::class, 'login']);
+Route::get('/nafath/authorize', [NafathController::class, 'start']);
 Route::match(['get', 'post'], '/nafath/callback', [NafathController::class, 'callback']);

@@ -43,4 +43,7 @@ return [
 
     // Clock-skew tolerance (seconds) when validating the Id_token timestamps.
     'leeway' => 60,
+
+    // How long (minutes) an issued state/nonce stays valid for the callback.
+    'state_ttl' => (int) env('NAFATH_STATE_TTL', 10),
 ];

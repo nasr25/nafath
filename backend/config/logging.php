@@ -65,6 +65,16 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Dedicated Nafath (IAM) OIDC trace — one file per day so a failed
+        // login/callback can be traced step by step in isolation.
+        'nafath' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/nafath.log'),
+            'level' => env('NAFATH_LOG_LEVEL', 'debug'),
+            'days' => 14,
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

@@ -47,13 +47,31 @@ async function copy(text) {
   }
 }
 
-// Decode an id_token payload (unverified — display only)
-function decodeToken(token) {
+// Send the token IAM returned to the backend for FULL verification
+// (signature against the IAM cert + issuer/audience + one-time state/nonce).
+// The browser only ever sees the fragment, so we forward it here.
+async function verifyCallback(idToken, state) {
+  callback.value = { loading: true }
   try {
-    const p = token.split('.')[1]
-    return JSON.parse(atob(p.replace(/-/g, '+').replace(/_/g, '/')))
-  } catch {
-    return null
+    const res = await fetch('/api/nafath/callback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ Id_token: idToken, State: state }),
+    })
+    const data = await res.json()
+    callback.value = {
+      ok: res.ok && data.status === true,
+      idToken,
+      message: data.message,
+      claims: data.data ?? null,
+    }
+  } catch (e) {
+    callback.value = {
+      ok: false,
+      idToken,
+      message: `Failed to reach backend: ${e.message}. Is Laravel running on :8000?`,
+      claims: null,
+    }
   }
 }
 
@@ -65,11 +83,15 @@ onMounted(() => {
     const query = new URLSearchParams(window.location.search)
     const idToken = hash.get('id_token') || query.get('id_token')
     const errParam = hash.get('error') || query.get('error')
-    callback.value = {
-      idToken,
-      error: errParam,
-      state: hash.get('state') || query.get('state'),
-      claims: idToken ? decodeToken(idToken) : null,
+    const state = hash.get('state') || query.get('state')
+
+    if (errParam) {
+      callback.value = { ok: false, error: errParam }
+    } else if (idToken) {
+      // Verify server-side rather than decoding unverified in the browser.
+      verifyCallback(idToken, state)
+    } else {
+      callback.value = { ok: false, message: 'No id_token in the callback URL.' }
     }
   }
 })
@@ -85,14 +107,25 @@ onMounted(() => {
     <!-- Callback view -->
     <section v-if="callback" class="card">
       <h2>Callback received</h2>
-      <p v-if="callback.error" class="err">Error: {{ callback.error }}</p>
-      <template v-if="callback.idToken">
-        <label>id_token</label>
-        <pre class="mono wrap">{{ callback.idToken }}</pre>
-        <label>Decoded claims</label>
-        <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+
+      <p v-if="callback.loading" class="muted">Verifying with backend…</p>
+
+      <template v-else>
+        <p v-if="callback.error" class="err">IAM returned an error: {{ callback.error }}</p>
+        <p v-else-if="callback.ok" class="ok">✓ {{ callback.message || 'Verified' }}</p>
+        <p v-else class="err">✗ Verification failed: {{ callback.message }}</p>
+
+        <template v-if="callback.claims">
+          <label>Verified claims (from backend)</label>
+          <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+        </template>
+
+        <template v-if="callback.idToken">
+          <label>id_token</label>
+          <pre class="mono wrap short">{{ callback.idToken }}</pre>
+        </template>
       </template>
-      <p v-else-if="!callback.error" class="muted">No id_token in the callback URL.</p>
+
       <a class="btn ghost" href="/">← Back</a>
     </section>
 
@@ -180,6 +213,7 @@ label { font-size: 13px; color: var(--muted); text-transform: uppercase;
 .link { background: none; border: none; color: #60a5fa; cursor: pointer;
   font-size: 13px; }
 .err { color: var(--err); margin-top: 14px; }
+.ok { color: var(--accent); margin-top: 14px; font-weight: 600; }
 .muted { color: var(--muted); font-size: 13px; }
 .foot { text-align: center; color: var(--muted); font-size: 12px;
   margin-top: 28px; }
