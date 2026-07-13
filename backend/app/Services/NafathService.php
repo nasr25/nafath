@@ -3,70 +3,112 @@
 namespace App\Services;
 
 use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class NafathService
 {
     /**
-     * Build a signed OIDC "request object" (JWT) plus the full authorize URL
-     * the frontend should redirect the user to.
+     * Build the authorize URL + the request-state to remember.
      *
-     * @return array{authorize_url:string, request:string, payload:array}
+     * @return array{url:string, state:string, nonce:string}
      */
-    public function buildAuthorizeRequest(): array
+    public function buildAuthorizationUrl(): array
     {
-        $clientId = config('nafath.client_id');
-
-        // "state" is used to link the request and the response; per the IAM
-        // spec it carries the same value as "nonce".
-        $nonce = Str::random(24);
+        $cfg   = config('nafath');
+        $nonce = Str::random(32);
+        $state = $nonce; // guide: "state": same as nonce — links request & response.
 
         $payload = [
-            'client_id'     => $clientId,
-            'iss'           => $clientId,            // iss == client_id
-            'response_type' => config('nafath.response_type'),
-            'redirect_uri'  => config('nafath.redirect_uri'),
-            'scope'         => config('nafath.scope'),
+            'client_id'     => $cfg['client_id'],
+            'iss'           => $cfg['client_id'],   // guide: iss == client_id
+            'response_type' => 'id_token',          // so the response carries the claims
+            'redirect_uri'  => $cfg['redirect_uri'],
+            'scope'         => 'openid',
             'nonce'         => $nonce,
-            'ui_locales'    => config('nafath.ui_locales'),
-            'max_age'       => (string) now()->timestamp,   // time of issuance
-            'state'         => $nonce,                        // state == nonce
+            'ui_locales'    => $cfg['ui_locale'],
+            'max_age'       => time(),
+            'state'         => $state,
         ];
 
-        $privateKey = $this->privateKey();
+        Log::info($payload);
+        // Sign the request JWT (RS256) with OUR private key — this is the step
+        // that jwt.io got wrong: it must be the IAM-registered certificate's key.
+        $request = JWT::encode($payload, $this->privateKey(), $cfg['alg']);
 
-        $headers = [];
-        if ($kid = config('nafath.key_id')) {
-            $headers['kid'] = $kid;
-        }
-
-        // Sign the request object with RS256, as mandated by IAM.
-        $jwt = JWT::encode($payload, $privateKey, 'RS256', null, $headers);
-
-        $authorizeUrl = config('nafath.authorize_url') . '?' . http_build_query([
-            'client_id' => $clientId,
-            'request'   => $jwt,
+        Log::info($request);
+        $url = $cfg['authorize_url'] . '?' . http_build_query([
+            'client_id' => $cfg['client_id'],
+            'request'   => $request,
         ]);
+        Log::info($url);
 
-        return [
-            'authorize_url' => $authorizeUrl,
-            'request'       => $jwt,
-            'payload'       => $payload,
-        ];
+        return ['url' => $url, 'state' => $state, 'nonce' => $nonce];
     }
 
     /**
-     * Read the RS256 private key used to sign the request object.
+     * Verify the Id_token returned by IAM and return its claims.
+     *
+     * @throws RuntimeException on any validation failure.
+     * @return array<string,mixed>
      */
-    protected function privateKey(): string
+    public function verifyIdToken(string $idToken, ?string $expectedState): array
     {
-        $path = config('nafath.private_key_path');
+        $cfg = config('nafath');
+        JWT::$leeway = (int) $cfg['leeway'];
 
-        if (! is_file($path)) {
-            abort(500, "Nafath private key not found at: {$path}. " .
-                'Generate a test key or set NAFATH_PRIVATE_KEY_PATH.');
+        // 1) Signature — verified against the IAM PUBLIC certificate.
+        try {
+            $claims = (array) JWT::decode($idToken, new Key($this->iamCert(), $cfg['alg']));
+        } catch (\Throwable $e) {
+            throw new RuntimeException('Id_token signature/decoding failed: ' . $e->getMessage());
         }
 
-        return (string) file_get_contents($path);
+        // 2) Issuer must be IAM.
+        if (!empty($cfg['issuer']) && ($claims['iss'] ?? null) !== $cfg['issuer']) {
+            throw new RuntimeException('Invalid issuer.');
+        }
+
+        // 3) Audience must be our client_id (when present).
+        if (isset($claims['aud']) && !in_array($cfg['client_id'], (array) $claims['aud'], true)) {
+            throw new RuntimeException('Invalid audience.');
+        }
+
+        // 4) Single-use: the state/nonce we sent must match what came back.
+        if ($expectedState !== null) {
+            $returned = $claims['state'] ?? $claims['nonce'] ?? null;
+            if (!hash_equals($expectedState, (string) $returned)) {
+                throw new RuntimeException('State/nonce mismatch (possible replay).');
+            }
+        }
+
+        // exp/iat/nbf are enforced by JWT::decode above (with leeway).
+        return $claims;
+    }
+
+    private function privateKey(): string
+    {
+        return $this->readKey($this->config('private_key_path'));
+    }
+
+    private function iamCert(): string
+    {
+        return $this->readKey($this->config('iam_cert_path'));
+    }
+
+    private function config(string $key): string
+    {
+        return (string) config("nafath.$key");
+    }
+
+    private function readKey(string $relativePath): string
+    {
+        if (!Storage::disk('local')->exists($relativePath)) {
+            throw new RuntimeException("NAFATH key not found: storage/app/{$relativePath}");
+        }
+        return Storage::disk('local')->get($relativePath);
     }
 }

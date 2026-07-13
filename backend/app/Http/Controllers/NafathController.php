@@ -3,53 +3,56 @@
 namespace App\Http\Controllers;
 
 use App\Services\NafathService;
-use Firebase\JWT\JWT;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class NafathController extends Controller
 {
-    public function __construct(private NafathService $nafath)
+    public function __construct(private NafathService $nafath) {}
+
+    /** Step 1-2: build the signed request and redirect the user to IAM. */
+    public function login(Request $request): RedirectResponse
     {
+        $auth = $this->nafath->buildAuthorizationUrl();
+
+        // Remember the state to validate the response (single-use / anti-replay).
+        $request->session()->put('nafath_state', $auth['state']);
+
+        return redirect()->away($auth['url']);
     }
 
     /**
-     * Return the signed OIDC request object and the full authorize URL so the
-     * frontend can inspect it and then redirect the user to IAM.
+     * Step 3-4: IAM POSTs { State, Id_token } here. Verify and consume.
+     * NOTE: exclude this route from CSRF (external POST) — see VerifyCsrfToken.
      */
-    public function start(): JsonResponse
+    public function callback(Request $request)
     {
-        return response()->json($this->nafath->buildAuthorizeRequest());
-    }
-
-    /**
-     * Callback receiver. IAM returns the id_token here (fragment or query).
-     * For a simple test we just decode the claims WITHOUT verification and
-     * echo them back. In production, verify the signature against the IAM
-     * public key and validate nonce/state before trusting anything.
-     */
-    public function callback(Request $request): JsonResponse
-    {
-        $idToken = $request->input('id_token');
-
-        if (! $idToken) {
-            return response()->json([
-                'ok'      => false,
-                'message' => 'No id_token received.',
-                'query'   => $request->query(),
-            ], 400);
+        $idToken = $request->input('Id_token', $request->input('id_token'));
+        if (!$idToken) {
+            return response()->json(['status' => false, 'message' => 'Missing Id_token'], 400);
         }
 
-        // NOTE: unverified decode for local testing / inspection only.
-        $parts = explode('.', $idToken);
-        $claims = count($parts) === 3
-            ? json_decode(JWT::urlsafeB64Decode($parts[1]), true)
-            : null;
+        $expectedState = $request->session()->pull('nafath_state'); // pull = one-time use
+
+        try {
+            $claims = $this->nafath->verifyIdToken($idToken, $expectedState);
+        } catch (\Throwable $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 401);
+        }
+
+        // ── Map the NAFATH claims to your user model here ────────────────
+        // $nationalId  = $claims['sub'] ?? null;   // National / Iqama Id
+        // $englishName = $claims['englishName'] ?? null;
+        // $arabicName  = $claims['arabicName']  ?? null;
+        // $gender      = $claims['gender']      ?? null;
+        // $user = User::updateOrCreate(['national_id' => $nationalId], [...]);
+        // Auth::login($user);  // or issue a Sanctum token for the SPA.
 
         return response()->json([
-            'ok'       => true,
-            'id_token' => $idToken,
-            'claims'   => $claims,
+            'status'  => true,
+            'code'    => 200,
+            'message' => 'NAFATH authentication successful',
+            'data'    => $claims,
         ]);
     }
 }
