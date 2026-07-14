@@ -177,6 +177,113 @@ class NafathService
         return 'nafath_state:' . $state;
     }
 
+    /**
+     * Compare the stored DB user against the verified NAFATH claims.
+     * Only the columns that have a corresponding NAFATH claim are returned
+     * (not the whole users table), each with the DB value, the NAFATH value,
+     * and whether they match.
+     *
+     * @param  array<string,mixed>  $claims
+     * @return array<int,array{field:string,label:string,database:?string,nafath:?string,match:bool}>
+     */
+    public function buildComparison(?\App\Models\User $user, array $claims): array
+    {
+        // DB column => [display label, NAFATH claim key]
+        $map = [
+            'id_number'     => ['National Id',   'sub'],
+            'first_name'    => ['First name',    'englishFirstName'],
+            'middle_name'   => ['Father name',   'englishFatherName'],
+            'last_name'     => ['Family name',   'englishFamilyName'],
+            'gender'        => ['Gender',        'gender'],
+            'date_of_birth' => ['Date of birth', 'dob'],
+        ];
+
+        $rows = [];
+        foreach ($map as $column => [$label, $claimKey]) {
+            $dbRaw = $user?->getAttribute($column);
+
+            // The National Id may arrive as `sub`, `userid`, or `nationalId`.
+            $nafathRaw = $claimKey === 'sub'
+                ? ($claims['sub'] ?? $claims['userid'] ?? $claims['nationalId'] ?? null)
+                : ($claims[$claimKey] ?? null);
+
+            $rows[] = [
+                'field'    => $column,
+                'label'    => $label,
+                'database' => $this->displayValue($column, $dbRaw),
+                'nafath'   => $this->displayValue($column, $nafathRaw),
+                'match'    => $this->valuesMatch($column, $dbRaw, $nafathRaw),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /** Human-readable value for display (dates normalised to Y-m-d). */
+    private function displayValue(string $column, mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if ($column === 'date_of_birth') {
+            return $this->toDate($value) ?? (string) $value;
+        }
+        return (string) $value;
+    }
+
+    /** Whether the DB value and the NAFATH value are equivalent for this column. */
+    private function valuesMatch(string $column, mixed $db, mixed $nafath): bool
+    {
+        $a = $this->normalize($column, $db);
+        $b = $this->normalize($column, $nafath);
+
+        if ($a === null && $b === null) {
+            return true; // nothing on either side → nothing to correct
+        }
+        if ($a === null || $b === null) {
+            return false;
+        }
+        return hash_equals($a, $b);
+    }
+
+    /** Normalise a value to a comparable form (null when effectively empty). */
+    private function normalize(string $column, mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if ($column === 'date_of_birth') {
+            return $this->toDate($value);
+        }
+
+        $s = trim((string) $value);
+        if ($s === '') {
+            return null;
+        }
+        if ($column === 'gender') {
+            $s = mb_strtolower($s);
+            return str_starts_with($s, 'm') ? 'male' : (str_starts_with($s, 'f') ? 'female' : $s);
+        }
+        return mb_strtolower($s);
+    }
+
+    /** Parse either a Carbon/DateTime or a NAFATH Gregorian string to Y-m-d. */
+    private function toDate(mixed $value): ?string
+    {
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        $s = trim((string) $value);
+        if ($s === '') {
+            return null;
+        }
+        // NAFATH dob looks like "Thu May 23 00:00:00 AST 1985" — drop the
+        // uppercase timezone token so strtotime can parse it reliably.
+        $s = preg_replace('/\b[A-Z]{2,4}\b/', '', $s);
+        $ts = strtotime($s);
+        return $ts ? date('Y-m-d', $ts) : null;
+    }
+
     private function privateKey(): string
     {
         return $this->readKey($this->config('private_key_path'));

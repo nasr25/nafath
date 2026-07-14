@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Services\NafathService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -65,19 +66,31 @@ class NafathController extends Controller
             'sub' => $claims['sub'] ?? null,
         ]);
 
-        // ── Map the NAFATH claims to your user model here ────────────────
-        // $nationalId  = $claims['sub'] ?? null;   // National / Iqama Id
-        // $englishName = $claims['englishName'] ?? null;
-        // $arabicName  = $claims['arabicName']  ?? null;
-        // $gender      = $claims['gender']      ?? null;
-        // $user = User::updateOrCreate(['national_id' => $nationalId], [...]);
-        // Auth::login($user);  // or issue a Sanctum token for the SPA.
+        // Find the local user by their National Id (NAFATH `sub`) and compare
+        // the stored ("old") data against the verified NAFATH ("corrected") data.
+        $nationalId = $claims['sub'] ?? $claims['userid'] ?? $claims['nationalId'] ?? null;
+        $user = $nationalId
+            ? User::where('id_number', $nationalId)->first()
+            : null;
+
+        Log::channel('nafath')->info('callback: user lookup', [
+            'has_national_id' => (bool) $nationalId,
+            'matched'         => (bool) $user,
+        ]);
 
         return response()->json([
             'status'  => true,
             'code'    => 200,
-            'message' => 'NAFATH authentication successful',
-            'data'    => $claims,
+            'message' => $user
+                ? 'NAFATH authentication successful'
+                : 'NAFATH verified, but no matching user was found for this National Id',
+            'data'    => [
+                'national_id' => $nationalId,
+                'matched'     => (bool) $user,
+                'user_id'     => $user?->id,
+                'comparison'  => $this->nafath->buildComparison($user, $claims),
+                'claims'      => $claims,
+            ],
         ]);
     }
 }

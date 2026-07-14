@@ -59,17 +59,22 @@ async function verifyCallback(idToken, state) {
       body: JSON.stringify({ Id_token: idToken, State: state }),
     })
     const data = await res.json()
+    const payload = data.data ?? {}
     callback.value = {
       ok: res.ok && data.status === true,
       idToken,
       message: data.message,
-      claims: data.data ?? null,
+      matched: payload.matched ?? false,
+      nationalId: payload.national_id ?? null,
+      comparison: payload.comparison ?? [],
+      claims: payload.claims ?? null,
     }
   } catch (e) {
     callback.value = {
       ok: false,
       idToken,
       message: `Failed to reach backend: ${e.message}. Is Laravel running on :8000?`,
+      comparison: [],
       claims: null,
     }
   }
@@ -115,14 +120,40 @@ onMounted(() => {
         <p v-else-if="callback.ok" class="ok">✓ {{ callback.message || 'Verified' }}</p>
         <p v-else class="err">✗ Verification failed: {{ callback.message }}</p>
 
-        <template v-if="callback.claims">
-          <label>Verified claims (from backend)</label>
-          <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+        <!-- DB (old) vs NAFATH (corrected) comparison -->
+        <template v-if="callback.ok && callback.matched">
+          <div class="row">
+            <label>Database vs NAFATH</label>
+            <span class="muted">National Id: {{ callback.nationalId }}</span>
+          </div>
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Database (old)</th>
+                <th>NAFATH (corrected)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in callback.comparison" :key="row.field">
+                <td class="fld">{{ row.label }}</td>
+                <td :class="row.match ? 'match' : 'mismatch'">{{ row.database ?? '—' }}</td>
+                <td :class="row.match ? 'match' : 'mismatch'">{{ row.nafath ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="muted">Green = value matches NAFATH · Red = differs (needs correcting).</p>
         </template>
 
-        <template v-if="callback.idToken">
-          <label>id_token</label>
-          <pre class="mono wrap short">{{ callback.idToken }}</pre>
+        <p v-else-if="callback.ok && !callback.matched" class="muted">
+          No local user found with National Id {{ callback.nationalId }}.
+        </p>
+
+        <template v-if="callback.claims">
+          <details>
+            <summary class="muted">Raw verified claims</summary>
+            <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+          </details>
         </template>
       </template>
 
@@ -214,6 +245,17 @@ label { font-size: 13px; color: var(--muted); text-transform: uppercase;
   font-size: 13px; }
 .err { color: var(--err); margin-top: 14px; }
 .ok { color: var(--accent); margin-top: 14px; font-weight: 600; }
+.cmp { width: 100%; border-collapse: collapse; margin: 8px 0 4px;
+  font-size: 14px; }
+.cmp th, .cmp td { text-align: left; padding: 9px 12px;
+  border-bottom: 1px solid var(--line); }
+.cmp th { color: var(--muted); font-size: 12px; text-transform: uppercase;
+  letter-spacing: .04em; font-weight: 600; }
+.cmp .fld { color: var(--muted); }
+.cmp .match { color: #4ade80; }
+.cmp .mismatch { color: var(--err); }
+details { margin-top: 16px; }
+summary { cursor: pointer; }
 .muted { color: var(--muted); font-size: 13px; }
 .foot { text-align: center; color: var(--muted); font-size: 12px;
   margin-top: 28px; }
