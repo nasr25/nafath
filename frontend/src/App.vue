@@ -83,7 +83,7 @@ async function verifyCallback(idToken, state) {
 onMounted(() => {
   // Detect a Nafath callback. IAM may return id_token in the URL fragment
   // (#id_token=...) or the query string (?id_token=...).
-  if (window.location.pathname.includes('/callback')) {
+  if (window.location.pathname.includes('/_IAM/login')) {
     const hash = new URLSearchParams(window.location.hash.slice(1))
     const query = new URLSearchParams(window.location.search)
     const idToken = hash.get('id_token') || query.get('id_token')
