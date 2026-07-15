@@ -8,15 +8,59 @@ const result = ref(null) // { authorize_url, request, payload }
 // Callback state (populated when IAM redirects back to /callback)
 const callback = ref(null)
 
+// UTF-8-safe base64url decode (id_token claims include Arabic names).
+function b64urlDecode(segment) {
+  const b64 = segment.replace(/-/g, '+').replace(/_/g, '/')
+  const bin = atob(b64)
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+  return new TextDecoder('utf-8').decode(bytes)
+}
+
 const jwtHeader = computed(() => {
   if (!result.value?.request) return null
   try {
     const [h] = result.value.request.split('.')
-    return JSON.parse(atob(h.replace(/-/g, '+').replace(/_/g, '/')))
+    return JSON.parse(b64urlDecode(h))
   } catch {
     return null
   }
 })
+
+// --- Paste & decode box (home page) ---
+// Decode any id_token/JWT locally, WITHOUT verifying the signature. Purely for
+// inspecting the claims — never trust these values for auth.
+const pasteInput = ref('')
+const pasteError = ref('')
+const pasted = ref(null) // { header, payload }
+
+function decodePasted() {
+  pasteError.value = ''
+  pasted.value = null
+  const raw = pasteInput.value.trim()
+  if (!raw) {
+    pasteError.value = 'Paste an id_token first.'
+    return
+  }
+  const parts = raw.split('.')
+  if (parts.length < 2) {
+    pasteError.value = 'That does not look like a JWT (expected header.payload.signature).'
+    return
+  }
+  try {
+    pasted.value = {
+      header: JSON.parse(b64urlDecode(parts[0])),
+      payload: JSON.parse(b64urlDecode(parts[1])),
+    }
+  } catch (e) {
+    pasteError.value = `Could not decode: ${e.message}`
+  }
+}
+
+function clearPasted() {
+  pasteInput.value = ''
+  pasteError.value = ''
+  pasted.value = null
+}
 
 async function buildRequest() {
   loading.value = true
@@ -201,6 +245,39 @@ onMounted(() => {
       </template>
     </section>
 
+    <!-- Paste & decode an id_token (no verification) -->
+    <section v-if="!callback" class="card" style="margin-top: 20px">
+      <h2>Decode an id_token</h2>
+      <p class="muted">
+        Paste the <code>id_token</code> from the IAM callback URL to inspect its
+        claims. Decoded locally in your browser — the signature is
+        <strong>not</strong> verified, so don't trust these values for auth.
+      </p>
+
+      <textarea
+        v-model="pasteInput"
+        class="mono paste"
+        rows="5"
+        placeholder="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ..."
+        spellcheck="false"
+      ></textarea>
+
+      <div class="row" style="justify-content: flex-start; gap: 10px">
+        <button class="btn primary" @click="decodePasted">Decode</button>
+        <button class="btn ghost" @click="clearPasted">Clear</button>
+      </div>
+
+      <p v-if="pasteError" class="err">{{ pasteError }}</p>
+
+      <template v-if="pasted">
+        <div class="row"><label>Header</label></div>
+        <pre class="mono">{{ JSON.stringify(pasted.header, null, 2) }}</pre>
+
+        <div class="row"><label>Payload (claims)</label></div>
+        <pre class="mono">{{ JSON.stringify(pasted.payload, null, 2) }}</pre>
+      </template>
+    </section>
+
     <footer class="foot">Laravel 10 API · Vue 3 · RS256 signed request</footer>
   </div>
 </template>
@@ -233,6 +310,10 @@ label { font-size: 13px; color: var(--muted); text-transform: uppercase;
   padding: 12px; font-family: Consolas, Menlo, monospace; font-size: 13px;
   overflow-x: auto; margin: 6px 0 0; }
 .wrap { white-space: pre-wrap; word-break: break-all; }
+.paste { width: 100%; resize: vertical; margin: 12px 0; color: var(--text);
+  white-space: pre-wrap; word-break: break-all; }
+code { background: #0b1220; border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px; font-family: Consolas, Menlo, monospace; font-size: 12px; }
 .short { max-height: 140px; overflow-y: auto; }
 .btn { border: none; border-radius: 8px; padding: 11px 18px; font-size: 15px;
   font-weight: 600; cursor: pointer; color: #fff; margin-top: 8px; }
