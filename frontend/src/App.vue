@@ -5,8 +5,16 @@ const loading = ref(false)
 const error = ref('')
 const result = ref(null) // { authorize_url, request, payload }
 
-// Callback state (populated when IAM redirects back to /callback)
+// Callback state (populated when IAM redirects back to the callback path)
 const callback = ref(null)
+
+// --- Environment config (see .env.example) ---
+// Base URL of the Laravel backend. Empty = same origin (the web server on the
+// whitelisted host must serve /api, e.g. reverse-proxy it to Laravel). In local
+// dev the Vite proxy handles /api, so this stays empty.
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+// The path IAM redirects back to — must match the registered redirect_uri path.
+const CALLBACK_PATH = import.meta.env.VITE_CALLBACK_PATH || '/_IAM/login'
 
 // UTF-8-safe base64url decode (id_token claims include Arabic names).
 function b64urlDecode(segment) {
@@ -67,7 +75,7 @@ async function buildRequest() {
   error.value = ''
   result.value = null
   try {
-    const res = await fetch('/api/nafath/authorize')
+    const res = await fetch(`${API_BASE}/api/nafath/authorize`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     result.value = await res.json()
   } catch (e) {
@@ -97,7 +105,7 @@ async function copy(text) {
 async function verifyCallback(idToken, state) {
   callback.value = { loading: true }
   try {
-    const res = await fetch('/api/nafath/callback', {
+    const res = await fetch(`${API_BASE}/api/nafath/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ Id_token: idToken, State: state }),
@@ -127,7 +135,7 @@ async function verifyCallback(idToken, state) {
 onMounted(() => {
   // Detect a Nafath callback. IAM may return id_token in the URL fragment
   // (#id_token=...) or the query string (?id_token=...).
-  if (window.location.pathname.includes('/_IAM/login')) {
+  if (window.location.pathname.includes(CALLBACK_PATH)) {
     const hash = new URLSearchParams(window.location.hash.slice(1))
     const query = new URLSearchParams(window.location.search)
     const idToken = hash.get('id_token') || query.get('id_token')
