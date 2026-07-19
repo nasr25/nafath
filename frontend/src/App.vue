@@ -8,6 +8,9 @@ const result = ref(null) // { authorize_url, request, payload }
 // Callback state (populated when IAM redirects back to the callback path)
 const callback = ref(null)
 
+// Diagnostic dump of what actually landed at the callback path.
+const debug = ref(null)
+
 // --- Environment config (see .env.example) ---
 // Base URL of the Laravel backend. Empty = same origin (the web server on the
 // whitelisted host must serve /api, e.g. reverse-proxy it to Laravel). In local
@@ -139,10 +142,72 @@ async function verifyCallback(idToken, state) {
   }
 }
 
+// Collect everything the browser can see about the current request. Used to
+// debug what actually lands at /_IAM/login. NOTE: the HTTP method and any POST
+// body are NOT visible to JavaScript — if IAM uses form_post, the token arrives
+// in the POST body and is handled by the backend, not here.
+function collectDebug() {
+  const loc = window.location
+  const toObj = (params) => {
+    const o = {}
+    for (const [k, v] of params) o[k] = v
+    return o
+  }
+  const hash = new URLSearchParams(loc.hash.replace(/^#/, ''))
+  const query = new URLSearchParams(loc.search)
+  const idToken = hash.get('id_token') || query.get('id_token') || null
+
+  let decoded = null
+  if (idToken) {
+    try {
+      const parts = idToken.split('.')
+      decoded = {
+        header: JSON.parse(b64urlDecode(parts[0])),
+        payload: JSON.parse(b64urlDecode(parts[1])),
+      }
+    } catch (e) {
+      decoded = { error: e.message }
+    }
+  }
+
+  let navigationType = '(unknown)'
+  try {
+    navigationType = performance.getEntriesByType('navigation')[0]?.type ?? '(unknown)'
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    time: new Date().toISOString(),
+    href: loc.href,
+    origin: loc.origin,
+    pathname: loc.pathname,
+    search: loc.search || '(none)',
+    hash: loc.hash || '(none)',
+    query: toObj(query),
+    fragment: toObj(hash),
+    idToken,
+    state: hash.get('State') || hash.get('state') || query.get('State') || query.get('state') || null,
+    error: hash.get('error') || query.get('error') || null,
+    decoded,
+    referrer: document.referrer || '(none)',
+    navigationType,
+    userAgent: navigator.userAgent,
+  }
+}
+
 onMounted(() => {
+  const onCallback = window.location.pathname.includes(CALLBACK_PATH)
+  const debugFlag = new URLSearchParams(window.location.search).has('debug')
+
+  // Always show the debug dump when we land on the callback path (or ?debug).
+  if (onCallback || debugFlag) {
+    debug.value = collectDebug()
+  }
+
   // Detect a Nafath callback. IAM may return id_token in the URL fragment
   // (#id_token=...) or the query string (?id_token=...).
-  if (window.location.pathname.includes(CALLBACK_PATH)) {
+  if (onCallback) {
     const hash = new URLSearchParams(window.location.hash.slice(1))
     const query = new URLSearchParams(window.location.search)
     const idToken = hash.get('id_token') || query.get('id_token')
@@ -168,6 +233,53 @@ onMounted(() => {
       <p class="sub">Build &amp; inspect the signed OIDC request sent to IAM (نفاذ)</p>
       <button class="btn ghost logout" @click="logout">Logout (IAM SLO)</button>
     </header>
+
+    <!-- Debug panel: exactly what the browser received at this URL -->
+    <section v-if="debug" class="card debug">
+      <div class="row" style="margin-top:0">
+        <h2 style="margin:0">🐞 Debug — hit {{ debug.pathname }}</h2>
+        <button class="link" @click="copy(JSON.stringify(debug, null, 2))">copy all</button>
+      </div>
+      <p class="muted">
+        What this page received. The HTTP method and any POST body are not
+        visible to JavaScript — if IAM used <strong>form_post</strong>, the token
+        is in the POST body and only the backend can read it (this page would
+        show no id_token).
+      </p>
+
+      <table class="cmp">
+        <tbody>
+          <tr><td class="fld">Time</td><td>{{ debug.time }}</td></tr>
+          <tr><td class="fld">Full URL</td><td class="brk">{{ debug.href }}</td></tr>
+          <tr><td class="fld">Path</td><td>{{ debug.pathname }}</td></tr>
+          <tr><td class="fld">Query string</td><td class="brk">{{ debug.search }}</td></tr>
+          <tr><td class="fld">Fragment</td><td class="brk">{{ debug.hash }}</td></tr>
+          <tr>
+            <td class="fld">id_token</td>
+            <td :class="debug.idToken ? 'match' : 'mismatch'">
+              {{ debug.idToken ? `present (${debug.idToken.length} chars)` : 'absent' }}
+            </td>
+          </tr>
+          <tr><td class="fld">State</td><td>{{ debug.state ?? '—' }}</td></tr>
+          <tr><td class="fld">error</td><td>{{ debug.error ?? '—' }}</td></tr>
+          <tr><td class="fld">Referrer</td><td class="brk">{{ debug.referrer }}</td></tr>
+          <tr><td class="fld">Navigation</td><td>{{ debug.navigationType }}</td></tr>
+        </tbody>
+      </table>
+
+      <template v-if="Object.keys(debug.query).length">
+        <label>Query params</label>
+        <pre class="mono">{{ JSON.stringify(debug.query, null, 2) }}</pre>
+      </template>
+      <template v-if="Object.keys(debug.fragment).length">
+        <label>Fragment params</label>
+        <pre class="mono">{{ JSON.stringify(debug.fragment, null, 2) }}</pre>
+      </template>
+      <template v-if="debug.decoded">
+        <label>Decoded id_token (unverified)</label>
+        <pre class="mono">{{ JSON.stringify(debug.decoded, null, 2) }}</pre>
+      </template>
+    </section>
 
     <!-- Callback view -->
     <section v-if="callback" class="card">
@@ -351,7 +463,9 @@ code { background: #0b1220; border: 1px solid var(--line); border-radius: 4px;
   border-bottom: 1px solid var(--line); }
 .cmp th { color: var(--muted); font-size: 12px; text-transform: uppercase;
   letter-spacing: .04em; font-weight: 600; }
-.cmp .fld { color: var(--muted); }
+.cmp .fld { color: var(--muted); white-space: nowrap; }
+.brk { word-break: break-all; }
+.card.debug { border-color: #a16207; }
 .cmp .match { color: #4ade80; }
 .cmp .mismatch { color: var(--err); }
 details { margin-top: 16px; }
