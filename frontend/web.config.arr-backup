@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BACKUP / ALTERNATE frontend web.config — ARR reverse-proxy variant.
+
+  Use this ONLY if the internal-rewrite web.config (the normal one in
+  public/web.config) leaves domain/_IAM/login returning 404 while the direct
+  backend URL domain/backend/_IAM/login returns 200. That means the parent
+  site's internal rewrite is not dispatching into the /backend child
+  application, and you must reverse-proxy instead.
+
+  Requirements before this works:
+    1. Install the IIS "Application Request Routing" (ARR) module.
+    2. IIS Manager -> server node -> Application Request Routing Cache ->
+       (right pane) Server Proxy Settings -> tick "Enable proxy" -> Apply.
+
+  To use: replace the site's web.config with this file's contents (or copy the
+  two IAM rules over). Adjust the proxy host/port in the two <action> URLs if
+  your backend is not reachable at https://localhost/backend.
+-->
+<configuration>
+  <system.webServer>
+    <staticContent>
+      <mimeMap fileExtension=".webp" mimeType="image/webp" />
+    </staticContent>
+    <rewrite>
+      <rules>
+        <!-- IAM login callback (GET or POST) -> proxied to backend app -->
+        <rule name="IAM login to backend (proxy)" stopProcessing="true">
+          <match url="^_IAM/login/?$" />
+          <action type="Rewrite" url="https://localhost/backend/_IAM/login" appendQueryString="true" />
+        </rule>
+
+        <!-- IAM Single Logout dispatch (?slo=false) -> proxied to backend app -->
+        <rule name="IAM logout to backend (proxy)" stopProcessing="true">
+          <match url="^_IAM/logout/?$" />
+          <action type="Rewrite" url="https://localhost/backend/_IAM/logout" appendQueryString="true" />
+        </rule>
+
+        <!-- SPA history fallback (skip real files, the backend app, and /_IAM) -->
+        <rule name="Handle History Mode" stopProcessing="true">
+          <match url="^(?!.*\.\w+$).*$" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+            <add input="{REQUEST_URI}" pattern="^/(backend|_IAM)" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="/" />
+        </rule>
+      </rules>
+    </rewrite>
+  </system.webServer>
+</configuration>
