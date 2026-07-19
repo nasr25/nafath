@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\NafathService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class NafathController extends Controller
@@ -83,6 +84,9 @@ class NafathController extends Controller
                 $view['nationalId'] = $nationalId;
                 $view['matched']    = (bool) $user;
                 $view['comparison'] = $this->nafath->buildComparison($user, $claims);
+
+                // Mark a local session so logout has real state to terminate.
+                $request->session()->put('nafath_sub', $nationalId);
             } catch (\Throwable $e) {
                 // Service already logged the precise failing step.
                 $view['verifyError'] = $e->getMessage();
@@ -90,6 +94,47 @@ class NafathController extends Controller
         }
 
         return response()->view('nafath.callback', $view);
+    }
+
+    /**
+     * IAM Single Logout (SLO) — the "simplified/direct logout URI" flow, which
+     * the guide marks as applicable to OIDC. One endpoint, two directions:
+     *
+     *  - IAM dispatch (?slo=false): IAM is logging the user out of us as part of
+     *    a Single Logout it is orchestrating. Kill our session and land on the
+     *    public page. (This URL, with ?slo=false, is what IAM has registered.)
+     *  - User-initiated (no slo): kill our session, then redirect the browser to
+     *    IAM's logout URL with ?slo=true so IAM ends its session and dispatches
+     *    logout to the other SPs.
+     */
+    public function logout(Request $request)
+    {
+        $cfg = config('nafath');
+        $slo = $request->input('slo', $request->query('slo'));
+
+        Log::channel('nafath')->info('logout: received', [
+            'ip'     => $request->ip(),
+            'method' => $request->method(),
+            'slo'    => $slo,
+        ]);
+
+        // Terminate our local session either way.
+        if (Auth::check()) {
+            Auth::logout();
+        }
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        // IAM is dispatching Single Logout to us — nothing more to do.
+        if ($slo === 'false') {
+            Log::channel('nafath')->info('logout: IAM SLO dispatch handled (slo=false)');
+            return redirect($cfg['post_logout_redirect']);
+        }
+
+        // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
+        $url = rtrim($cfg['logout_url'], '?&') . '?slo=true';
+        Log::channel('nafath')->info('logout: redirecting to IAM', ['url' => $url]);
+        return redirect()->away($url);
     }
 
     /**

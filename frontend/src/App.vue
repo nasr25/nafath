@@ -91,6 +91,13 @@ function redirectToNafath() {
   }
 }
 
+// IAM Single Logout: full-page navigation (not AJAX) so IAM can fan the logout
+// out to the other SPs through the browser. Backend kills the local session,
+// then redirects to IAM (?slo=true).
+function logout() {
+  window.location.href = `${API_BASE}/_IAM/logout`
+}
+
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text)
@@ -159,6 +166,7 @@ onMounted(() => {
     <header class="head">
       <h1>Nafath OIDC — Test Console</h1>
       <p class="sub">Build &amp; inspect the signed OIDC request sent to IAM (نفاذ)</p>
+      <button class="btn ghost logout" @click="logout">Logout (IAM SLO)</button>
     </header>
 
     <!-- Callback view -->
@@ -307,6 +315,9 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .page { max-width: 760px; margin: 0 auto; padding: 32px 20px 64px; }
 .head h1 { margin: 0; font-size: 26px; }
 .sub { color: var(--muted); margin: 6px 0 24px; }
+.head { position: relative; }
+.logout { position: absolute; top: 0; right: 0; margin: 0; padding: 8px 14px;
+  font-size: 13px; }
 .card { background: var(--card); border: 1px solid var(--line);
   border-radius: 12px; padding: 22px; }
 h2 { margin-top: 0; }

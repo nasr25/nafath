@@ -22,3 +22,9 @@ Route::get('/', function () {
 // or with the token in the URL fragment (GET). Served by Laravel so the POST
 // has a real handler (a static host answers POST with 405).
 Route::match(['get', 'post'], '/_IAM/login', [NafathController::class, 'iamCallback']);
+
+// IAM Single Logout. One endpoint, two directions:
+//  - user-initiated (no slo)  -> kill local session, redirect to IAM ?slo=true
+//  - IAM dispatch (?slo=false) -> kill local session, land on the public page
+// The SLO dispatch URL (?slo=false) must be the logout URL registered with IAM.
+Route::match(['get', 'post'], '/_IAM/logout', [NafathController::class, 'logout']);

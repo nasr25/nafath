@@ -31,6 +31,12 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
+      // Let the logout flow reach the backend in dev (login callback stays on
+      // the SPA, so only /_IAM/logout is proxied, not all of /_IAM).
+      '/_IAM/logout': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

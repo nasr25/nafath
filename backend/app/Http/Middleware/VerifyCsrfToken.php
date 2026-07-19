@@ -14,5 +14,7 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         // IAM posts the id_token here cross-site (form_post) with no CSRF token.
         '_IAM/login',
+        // IAM dispatches Single Logout here (slo=false) cross-site, no CSRF token.
+        '_IAM/logout',
     ];
 }

@@ -19,6 +19,13 @@ return [
     // Where IAM returns the user claims (must be registered with IAM).
     'redirect_uri' => env('NAFATH_REDIRECT_URI', 'http://localhost:5173/callback'),
 
+    // IAM Single Logout (SLO) endpoint. Direct/simplified logout (applicable to
+    // OIDC): redirect the browser here with ?slo=true to end the IAM session.
+    'logout_url' => env('NAFATH_LOGOUT_URL', 'https://www.iam.gov.sa/samlsso'),
+
+    // Where to land the user once logout finishes (a public page on the SP).
+    'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
+
     // Language shown to the user by IAM: "ar" or "en".
     'ui_locales' => env('NAFATH_UI_LOCALES', 'ar'),
 
