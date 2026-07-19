@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\NafathController;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -16,6 +17,21 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+// Diagnostic: proves a request reached the Laravel backend app. No token, no
+// POST, no CSRF — just a plain 200 so you can isolate IIS routing from app
+// errors. Test:  domain/backend/_IAM/ping  (direct) and  domain/_IAM/ping
+// (through the frontend rewrite). Remove before production.
+Route::get('/_IAM/ping', function () {
+    Log::channel('nafath')->info('iam ping: reached Laravel backend');
+    return response()->json([
+        'ok'      => true,
+        'message' => 'IAM ping OK — request reached the Laravel backend',
+        'path'    => request()->path(),
+        'method'  => request()->method(),
+        'time'    => now()->toIso8601String(),
+    ]);
 });
 
 // IAM (Nafath) redirect_uri. IAM returns the user here — as a form_post (POST)
