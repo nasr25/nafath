@@ -267,6 +267,14 @@ onMounted(() => {
         </tbody>
       </table>
 
+      <template v-if="debug.idToken">
+        <div class="row">
+          <label>Raw id_token</label>
+          <button class="link" @click="copy(debug.idToken)">copy</button>
+        </div>
+        <pre class="mono brk">{{ debug.idToken }}</pre>
+      </template>
+
       <template v-if="Object.keys(debug.query).length">
         <label>Query params</label>
         <pre class="mono">{{ JSON.stringify(debug.query, null, 2) }}</pre>

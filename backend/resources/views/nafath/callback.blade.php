@@ -84,10 +84,8 @@
       @endif
 
       @if ($idToken)
-        <details>
-          <summary>Raw id_token</summary>
-          <pre class="mono" style="margin-top:8px">{{ $idToken }}</pre>
-        </details>
+        <label>Raw id_token</label>
+        <pre class="mono">{{ $idToken }}</pre>
       @endif
     </div>
 
@@ -99,8 +97,7 @@
         browser (signature NOT verified).</p>
       <label>Header</label><pre class="mono" id="fHeader"></pre>
       <label>Payload (claims)</label><pre class="mono" id="fPayload"></pre>
-      <details><summary>Raw id_token</summary>
-        <pre class="mono" id="fRaw" style="margin-top:8px"></pre></details>
+      <label>Raw id_token</label><pre class="mono" id="fRaw"></pre>
     </div>
 
     <a class="btn" href="/">← Back</a>

@@ -53,6 +53,10 @@ class NafathController extends Controller
         $state      = $request->input('State', $request->input('state'));
         $errorParam = $request->input('error');
 
+        // Print the raw id_token to the log for debugging (contains PII — remove
+        // or mask before production).
+        Log::channel('nafath')->info('iam callback: id_token', ['id_token' => $idToken]);
+
         $view = [
             'idToken'     => $idToken,
             'state'       => $state,
