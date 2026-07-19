@@ -12,6 +12,7 @@ class VerifyCsrfToken extends Middleware
      * @var array<int, string>
      */
     protected $except = [
-        //
+        // IAM posts the id_token here cross-site (form_post) with no CSRF token.
+        '_IAM/login',
     ];
 }

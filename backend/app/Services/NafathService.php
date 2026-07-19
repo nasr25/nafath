@@ -152,6 +152,38 @@ class NafathService
     }
 
     /**
+     * Decode a JWT's header + payload WITHOUT verifying the signature.
+     * For inspection only — never trust these claims for authentication.
+     *
+     * @return array{header:array<string,mixed>, payload:array<string,mixed>}
+     */
+    public function decodeWithoutVerification(string $idToken): array
+    {
+        $parts = explode('.', $idToken);
+        if (count($parts) < 2) {
+            throw new RuntimeException('Not a JWT (expected header.payload.signature).');
+        }
+        return [
+            'header'  => $this->b64urlJson($parts[0]),
+            'payload' => $this->b64urlJson($parts[1]),
+        ];
+    }
+
+    /** Base64url-decode a JWT segment into an associative array. */
+    private function b64urlJson(string $segment): array
+    {
+        $json = base64_decode(strtr($segment, '-_', '+/'), true);
+        if ($json === false) {
+            throw new RuntimeException('Invalid base64url in token segment.');
+        }
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            throw new RuntimeException('Token segment is not valid JSON.');
+        }
+        return $data;
+    }
+
+    /**
      * Log a verification failure and throw. Return type is a hint only — this
      * never returns.
      *
