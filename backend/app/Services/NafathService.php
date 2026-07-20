@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -98,11 +100,22 @@ class NafathService
             'returned_state' => $this->mask($returnedState),
         ]);
 
-        // 1) Signature — verified against the IAM PUBLIC certificate.
+        // 1) Signature — verified against IAM's JWKS (by `kid`) when configured,
+        //    otherwise the static IAM public certificate.
+        $header = $this->tokenHeader($idToken);
+        Log::channel('nafath')->info('callback: verifying signature', [
+            'alg'        => $header['alg'] ?? null,
+            'kid'        => $header['kid'] ?? null,
+            'key_source' => !empty($cfg['jwks_url']) ? 'jwks' : 'cert',
+        ]);
         try {
-            $claims = (array) JWT::decode($idToken, new Key($this->iamCert(), $cfg['alg']));
+            $claims = (array) JWT::decode($idToken, $this->signingKeys($cfg));
         } catch (\Throwable $e) {
-            return $this->fail('signature/decoding failed: ' . $e->getMessage());
+            return $this->fail('signature/decoding failed: ' . $e->getMessage(), [
+                'token_kid'  => $header['kid'] ?? null,
+                'token_alg'  => $header['alg'] ?? null,
+                'key_source' => !empty($cfg['jwks_url']) ? 'jwks' : 'cert',
+            ]);
         }
         Log::channel('nafath')->info('callback: step 1/4 signature OK', [
             'iss' => $claims['iss'] ?? null,
@@ -314,6 +327,57 @@ class NafathService
         $s = preg_replace('/\b[A-Z]{2,4}\b/', '', $s);
         $ts = strtotime($s);
         return $ts ? date('Y-m-d', $ts) : null;
+    }
+
+    /**
+     * The key(s) used to verify the id_token signature. When a JWKS URL is
+     * configured, returns the parsed key set (JWT::decode selects by `kid`);
+     * otherwise the single static IAM certificate.
+     *
+     * @param  array<string,mixed>  $cfg
+     * @return Key|array<string,Key>
+     */
+    private function signingKeys(array $cfg): Key|array
+    {
+        if (!empty($cfg['jwks_url'])) {
+            return JWK::parseKeySet($this->fetchJwks($cfg['jwks_url'], (int) $cfg['jwks_ttl']), $cfg['alg']);
+        }
+        return new Key($this->iamCert(), $cfg['alg']);
+    }
+
+    /**
+     * Fetch and cache IAM's JWKS document.
+     *
+     * @return array<string,mixed>
+     */
+    private function fetchJwks(string $url, int $ttl): array
+    {
+        return Cache::remember('nafath_jwks', $ttl, function () use ($url) {
+            Log::channel('nafath')->info('callback: fetching JWKS', ['url' => $url]);
+            $res = Http::timeout(10)->get($url);
+            if (!$res->ok()) {
+                throw new RuntimeException('Failed to fetch JWKS: HTTP ' . $res->status());
+            }
+            $jwks = $res->json();
+            if (!is_array($jwks) || empty($jwks['keys'])) {
+                throw new RuntimeException('JWKS response has no "keys".');
+            }
+            return $jwks;
+        });
+    }
+
+    /**
+     * Decode a JWT header (no verification) for diagnostics — exposes `alg`/`kid`.
+     *
+     * @return array<string,mixed>
+     */
+    private function tokenHeader(string $idToken): array
+    {
+        try {
+            return $this->decodeWithoutVerification($idToken)['header'];
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function privateKey(): string

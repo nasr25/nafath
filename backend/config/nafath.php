@@ -53,6 +53,13 @@ return [
     'private_key_path' => env('NAFATH_PRIVATE_KEY_PATH', 'nafath/sp_private_key.pem'),
     'iam_cert_path'    => env('NAFATH_IAM_CERT_PATH', 'nafath/iam_public.cer'),
 
+    // Preferred over the static cert: IAM's JWKS endpoint. When set, the token
+    // is verified against the key whose `kid` matches the token header, which
+    // handles key rotation and multiple signing keys. Leave empty to use the
+    // static cert above.
+    'jwks_url' => env('NAFATH_JWKS_URL'),
+    'jwks_ttl' => (int) env('NAFATH_JWKS_TTL', 3600), // seconds to cache the JWKS
+
     // Clock-skew tolerance (seconds) when validating the Id_token timestamps.
     'leeway' => 60,
 
