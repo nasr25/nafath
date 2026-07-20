@@ -26,6 +26,11 @@ return [
     // Where to land the user once logout finishes (a public page on the SP).
     'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
 
+    // Frontend (Vue) application path, mounted under this Laravel site. After a
+    // callback the backend caches the decoded result and redirects here with a
+    // one-time ?rid= so the SPA can fetch and display it.
+    'frontend_url' => env('NAFATH_FRONTEND_URL', '/app'),
+
     // Language shown to the user by IAM: "ar" or "en".
     'ui_locales' => env('NAFATH_UI_LOCALES', 'ar'),
 

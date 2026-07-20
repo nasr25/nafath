@@ -1,42 +1,20 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import fs from 'node:fs'
 
-// The IAM callback (redirect_uri) is registered as
-// https://mydomain.com/_IAM/login, so IAM hands the token to the browser at
-// THAT host over HTTPS. To capture it on this machine we:
-//   1) map mydomain.com -> 127.0.0.1 in the hosts file, and
-//   2) serve this dev app for that host over HTTPS on port 443.
-// Drop a cert/key at frontend/certs/mydomain.com.pem(+ -key.pem) (e.g. via
-// mkcert) and this config switches to the HTTPS-on-443 callback setup.
-// Without the certs it falls back to the plain http://localhost:5173 dev mode.
-const cert = './certs/mydomain.com.pem'
-const key = './certs/mydomain.com-key.pem'
-const haveCerts = fs.existsSync(cert) && fs.existsSync(key)
-
+// The SPA is deployed as an IIS application under the Laravel site, at
+// domain/app/, so assets must resolve under that base. The backend (Laravel)
+// is the site root, so API calls go to the root (/api, /nafath) — same origin.
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue()],
+  base: '/app/',
   server: {
-    host: haveCerts ? 'mydomain.com' : true,
-    port: haveCerts ? 443 : 5173,
-    // Allow IAM's redirect to land on this dev server under the real host name.
-    allowedHosts: ['mydomain.com'],
-    https: haveCerts
-      ? { cert: fs.readFileSync(cert), key: fs.readFileSync(key) }
-      : undefined,
+    port: 5173,
     proxy: {
-      // Forward API calls to the Laravel backend during development.
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      // Let the logout flow reach the backend in dev (login callback stays on
-      // the SPA, so only /_IAM/logout is proxied, not all of /_IAM).
-      '/_IAM/logout': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
+      // Forward backend calls to Laravel during local dev.
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/nafath': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/_IAM': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },
 })

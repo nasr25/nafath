@@ -1,12 +1,27 @@
 # Nafath (IAM نفاذ) OIDC Integration
 
 A minimal test setup for building and inspecting the **signed OIDC request**
-that a Service Provider (SP) sends to the Saudi IAM/Nafath authorize endpoint.
+that a Service Provider (SP) sends to the Saudi IAM/Nafath authorize endpoint,
+and for decoding/verifying the returned `id_token`.
 
-- **backend/** — Laravel 10 API. Builds the RS256-signed JWT *request object*
-  and returns the full `/authorize` URL. Also receives the callback.
-- **frontend/** — Vue 3 (Vite). Simple console to build, inspect, and (once
-  registered) launch the Nafath login.
+- **backend/** — Laravel 10. Is the **site root**. Renders the Blade *build
+  request* page, receives the IAM callback (`/_IAM/login`), decodes + verifies
+  the `id_token`, then hands the result to the frontend.
+- **frontend/** — Vue 3 (Vite). Deployed as an application under the backend at
+  **`/app`**. Displays the decoded/verified callback result; also decodes any
+  pasted token locally.
+
+## Topology (IIS)
+
+```
+domain/            -> Laravel site (build page, /_IAM/*, /api/*, /nafath/*)
+domain/app/        -> Vue SPA application (result display)
+```
+
+The callback lands directly on Laravel (site root), so no cross-application
+rewrite is needed. After decoding, the backend caches the result under a
+one-time `rid` and redirects to `domain/app/?rid=`; the SPA fetches it once from
+`/nafath/result?rid=` and renders it.
 
 ## The OIDC request (per the IAM spec)
 
@@ -47,8 +62,9 @@ cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173 and click **Build Nafath request**. The frontend
-proxies `/api/*` to the Laravel backend automatically (see `frontend/vite.config.js`).
+The build page is served by Laravel at http://localhost:8000/. The Vue result
+app runs at http://localhost:5173/app/ and proxies `/api`, `/nafath`, `/_IAM`
+to the backend (see `frontend/vite.config.js`).
 
 ## Configuration
 

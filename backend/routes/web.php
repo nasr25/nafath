@@ -15,9 +15,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Home = the Blade "build request" console (Laravel is the site root now).
+Route::get('/', [NafathController::class, 'build']);
 
 // Diagnostic: proves a request reached the Laravel backend app. No token, no
 // POST, no CSRF — just a plain 200 so you can isolate IIS routing from app
@@ -44,3 +43,8 @@ Route::match(['get', 'post'], '/_IAM/login', [NafathController::class, 'iamCallb
 //  - IAM dispatch (?slo=false) -> kill local session, land on the public page
 // The SLO dispatch URL (?slo=false) must be the logout URL registered with IAM.
 Route::match(['get', 'post'], '/_IAM/logout', [NafathController::class, 'logout']);
+
+// One-time decoded-result fetch for the frontend SPA. The callback caches the
+// result under a random rid and redirects to the SPA with ?rid=; the SPA calls
+// this once to render it (Cache::pull => single use).
+Route::get('/nafath/result', [NafathController::class, 'result']);

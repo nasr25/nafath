@@ -7,11 +7,55 @@ use App\Services\NafathService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class NafathController extends Controller
 {
     public function __construct(private NafathService $nafath) {}
+
+    /**
+     * Home page (site root): build the signed OIDC request and render the Blade
+     * console showing the authorize URL + decoded request, with a button to
+     * redirect the browser to IAM. Builds fresh on each load.
+     */
+    public function build()
+    {
+        $auth = null;
+        $header = null;
+        $error = null;
+
+        try {
+            $auth = $this->nafath->buildAuthorizationUrl();
+            $header = $this->nafath->decodeWithoutVerification($auth['request'])['header'];
+        } catch (\Throwable $e) {
+            Log::channel('nafath')->error('build page: ' . $e->getMessage());
+            $error = $e->getMessage();
+        }
+
+        return response()->view('nafath.build', compact('auth', 'header', 'error'));
+    }
+
+    /**
+     * One-time fetch of a decoded callback result by its `rid`. The frontend SPA
+     * calls this after the callback redirects it here with ?rid=. Cache::pull
+     * makes it single-use.
+     */
+    public function result(Request $request): JsonResponse
+    {
+        $rid = (string) $request->query('rid', '');
+        $data = $rid !== '' ? Cache::pull('nafath_result:' . $rid) : null;
+
+        if (!$data) {
+            return response()->json([
+                'ok'      => false,
+                'message' => 'No result found — the rid is missing, already used, or expired.',
+            ], 404);
+        }
+
+        return response()->json(['ok' => true, 'result' => $data]);
+    }
 
     /**
      * Step 1-2: build the signed request object. Returns the authorize URL and
@@ -36,9 +80,9 @@ class NafathController extends Controller
 
     /**
      * IAM redirect_uri (/_IAM/login). IAM returns the user here, usually as a
-     * form_post (POST { State, Id_token }). Renders an HTML page showing the
-     * decoded claims + (when possible) the full verification and DB comparison.
-     * Unlike callback() below, this returns a browser page, not JSON.
+     * form_post (POST { State, Id_token }). Decodes + verifies the token, caches
+     * the result under a one-time `rid`, then redirects the browser to the
+     * frontend SPA (?rid=) which fetches and displays it via result().
      */
     public function iamCallback(Request $request)
     {
@@ -97,7 +141,18 @@ class NafathController extends Controller
             }
         }
 
-        return response()->view('nafath.callback', $view);
+        // Cache the decoded result under a one-time id and hand off to the
+        // frontend SPA, which fetches it via result() and renders it.
+        $rid = Str::random(40);
+        Cache::put('nafath_result:' . $rid, $view, now()->addMinutes(5));
+
+        $frontend = rtrim((string) config('nafath.frontend_url'), '/');
+        Log::channel('nafath')->info('iam callback: redirecting to frontend', [
+            'frontend' => $frontend,
+            'verified' => $view['verified'],
+        ]);
+
+        return redirect($frontend . '/?rid=' . $rid);
     }
 
     /**
