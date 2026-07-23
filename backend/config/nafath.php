@@ -51,6 +51,13 @@ return [
     //   Prod: https://api.id.gov.sa/identityServices/userInfo
     'userinfo_url' => env('NAFATH_USERINFO_URL', 'https://api.id.sa/identityServices/userInfo'),
 
+    // TLS trust for outbound calls (UserInfo / JWKS). Point NAFATH_CA_BUNDLE at
+    // a PEM containing the missing root CA (e.g. the Saudi gov root or your TLS-
+    // inspection firewall root) — this is the correct fix. NAFATH_VERIFY_SSL=false
+    // disables verification entirely (INSECURE — local testing only).
+    'ca_bundle'  => env('NAFATH_CA_BUNDLE'),
+    'verify_ssl' => (bool) env('NAFATH_VERIFY_SSL', true),
+
     'issuer'        => env('NAFATH_ISSUER'),
     'alg'           => env('NAFATH_ALG', 'RS256'),
     'ui_locale'     => env('NAFATH_UI_LOCALE', 'ar'),

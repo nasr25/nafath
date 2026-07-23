@@ -238,6 +238,7 @@ class NafathService
 
         $res = Http::withToken($accessToken) // Authorization: Bearer <token>
             ->withHeaders(['Accept' => 'application/jwt'])
+            ->withOptions(['verify' => $this->httpVerify()])
             ->timeout(15)
             ->get($url);
 
@@ -259,6 +260,17 @@ class NafathService
         ]);
 
         return $payload['user_info'] ?? $payload;
+    }
+
+    /**
+     * Guzzle `verify` value for outbound calls: a CA-bundle path when configured
+     * (the correct fix for an untrusted root), otherwise the verify_ssl bool
+     * (set false only for local testing — insecure).
+     */
+    private function httpVerify(): bool|string
+    {
+        $bundle = (string) config('nafath.ca_bundle');
+        return $bundle !== '' ? $bundle : (bool) config('nafath.verify_ssl');
     }
 
     /**
@@ -286,7 +298,7 @@ class NafathService
     {
         return Cache::remember('nafath_jwks', $ttl, function () use ($url) {
             Log::channel('nafath')->info('callback: fetching JWKS', ['url' => $url]);
-            $res = Http::timeout(10)->get($url);
+            $res = Http::withOptions(['verify' => $this->httpVerify()])->timeout(10)->get($url);
             if (!$res->ok()) {
                 throw new RuntimeException('Failed to fetch JWKS: HTTP ' . $res->status());
             }
