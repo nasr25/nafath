@@ -233,23 +233,24 @@ class NafathService
      */
     public function buildComparison(?\App\Models\User $user, array $claims): array
     {
-        // DB column => [display label, NAFATH claim key]
+        // DB column => [display label, UserInfo/claim key]. The profile fields
+        // (name/gender/dob) come from the iDart UserInfo `user_info` object.
         $map = [
             'id_number'     => ['National Id',   'sub'],
-            'first_name'    => ['First name',    'englishFirstName'],
-            'middle_name'   => ['Father name',   'englishFatherName'],
-            'last_name'     => ['Family name',   'englishFamilyName'],
+            'first_name'    => ['First name',    'first_name#en'],
+            'middle_name'   => ['Father name',   'father_name#en'],
+            'last_name'     => ['Family name',   'family_name#en'],
             'gender'        => ['Gender',        'gender'],
-            'date_of_birth' => ['Date of birth', 'dob'],
+            'date_of_birth' => ['Date of birth', 'dob#g'],
         ];
 
         $rows = [];
         foreach ($map as $column => [$label, $claimKey]) {
             $dbRaw = $user?->getAttribute($column);
 
-            // The National Id may arrive as `sub`, `userid`, or `nationalId`.
+            // National Id may arrive as `sub`, `userid`, `id`, or `nationalId`.
             $nafathRaw = $claimKey === 'sub'
-                ? ($claims['sub'] ?? $claims['userid'] ?? $claims['nationalId'] ?? null)
+                ? ($claims['sub'] ?? $claims['userid'] ?? $claims['id'] ?? $claims['nationalId'] ?? null)
                 : ($claims[$claimKey] ?? null);
 
             $rows[] = [
@@ -327,6 +328,45 @@ class NafathService
         $s = preg_replace('/\b[A-Z]{2,4}\b/', '', $s);
         $ts = strtotime($s);
         return $ts ? date('Y-m-d', $ts) : null;
+    }
+
+    /**
+     * Call the iDart UserInfo service with the Nafath access token (from the
+     * id_token's `accessToken` claim) and return the decoded `user_info` profile.
+     * The response is itself a signed JWT (application/jwt); we decode its
+     * payload for the profile. (Verifying that JWT's signature is a later step.)
+     *
+     * @return array<string,mixed>
+     * @throws RuntimeException on HTTP or decoding failure.
+     */
+    public function fetchUserInfo(string $accessToken): array
+    {
+        $url = $this->config('userinfo_url');
+        Log::channel('nafath')->info('userinfo: requesting', ['url' => $url]);
+
+        $res = Http::withToken($accessToken) // Authorization: Bearer <token>
+            ->withHeaders(['Accept' => 'application/jwt'])
+            ->timeout(15)
+            ->get($url);
+
+        if (!$res->successful()) {
+            $reason = $res->header('WWW-Authenticate') ?: $res->body();
+            Log::channel('nafath')->warning('userinfo: request failed', [
+                'status'   => $res->status(),
+                'trace_id' => $res->header('X-TraceId'),
+                'reason'   => $reason,
+            ]);
+            throw new RuntimeException('UserInfo request failed: HTTP ' . $res->status() . ' ' . $reason);
+        }
+
+        $jwt = trim($res->body());
+        $payload = $this->decodeWithoutVerification($jwt)['payload'];
+        Log::channel('nafath')->info('userinfo: received', [
+            'trace_id' => $res->header('X-TraceId'),
+            'has_user_info' => isset($payload['user_info']),
+        ]);
+
+        return $payload['user_info'] ?? $payload;
     }
 
     /**

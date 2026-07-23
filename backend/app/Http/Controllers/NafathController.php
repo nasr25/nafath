@@ -102,15 +102,17 @@ class NafathController extends Controller
         Log::channel('nafath')->info('iam callback: id_token', ['id_token' => $idToken]);
 
         $view = [
-            'idToken'     => $idToken,
-            'state'       => $state,
-            'errorParam'  => $errorParam,
-            'decoded'     => null,
-            'verified'    => false,
-            'verifyError' => null,
-            'nationalId'  => null,
-            'matched'     => false,
-            'comparison'  => null,
+            'idToken'       => $idToken,
+            'state'         => $state,
+            'errorParam'    => $errorParam,
+            'decoded'       => null,
+            'verified'      => false,
+            'verifyError'   => null,
+            'nationalId'    => null,
+            'matched'       => false,
+            'comparison'    => null,
+            'userInfo'      => null,
+            'userInfoError' => null,
         ];
 
         if ($idToken) {
@@ -121,24 +123,50 @@ class NafathController extends Controller
             } catch (\Throwable $e) {
                 $view['verifyError'] = 'Decode failed: ' . $e->getMessage();
             }
+            $payload = $view['decoded']['payload'] ?? [];
 
-            // Attempt full verification (needs the IAM cert + a live state/nonce).
+            // Attempt full signature verification (needs the IAM cert + a live
+            // state/nonce). Fall back to the decoded payload so the profile
+            // lookup below still runs while the verify cert is being sorted.
             try {
                 $claims = $this->nafath->verifyIdToken($idToken, $state);
                 $view['verified'] = true;
-
-                $nationalId = $claims['sub'] ?? $claims['userid'] ?? $claims['nationalId'] ?? null;
-                $user = $nationalId ? User::where('id_number', $nationalId)->first() : null;
-                $view['nationalId'] = $nationalId;
-                $view['matched']    = (bool) $user;
-                $view['comparison'] = $this->nafath->buildComparison($user, $claims);
-
-                // Mark a local session so logout has real state to terminate.
-                $request->session()->put('nafath_sub', $nationalId);
             } catch (\Throwable $e) {
-                // Service already logged the precise failing step.
-                $view['verifyError'] = $e->getMessage();
+                $view['verifyError'] = $e->getMessage(); // service logged the step
+                $claims = $payload;
             }
+
+            $nationalId = $claims['sub'] ?? $claims['userid'] ?? $claims['nationalId'] ?? null;
+            $user = null;
+            if ($nationalId) {
+                try {
+                    $user = User::where('id_number', $nationalId)->first();
+                    $request->session()->put('nafath_sub', $nationalId);
+                } catch (\Throwable $e) {
+                    // Don't let a DB hiccup crash the callback — degrade to "no match".
+                    Log::channel('nafath')->warning('callback: user lookup failed', [
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+            $view['nationalId'] = $nationalId;
+            $view['matched']    = (bool) $user;
+
+            // The id_token carries only ids; the real profile (name/dob/gender)
+            // comes from the iDart UserInfo service, called with the access token.
+            $accessToken = $claims['accessToken'] ?? $payload['accessToken'] ?? null;
+            if ($accessToken) {
+                try {
+                    $view['userInfo'] = $this->nafath->fetchUserInfo($accessToken);
+                } catch (\Throwable $e) {
+                    $view['userInfoError'] = $e->getMessage();
+                }
+            }
+
+            // Compare the DB user against the merged NAFATH data (id_token claims
+            // + UserInfo profile).
+            $profile = array_merge(is_array($claims) ? $claims : [], $view['userInfo'] ?? []);
+            $view['comparison'] = $this->nafath->buildComparison($user, $profile);
         }
 
         // Cache the decoded result under a one-time id and hand off to the

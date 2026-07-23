@@ -47,6 +47,8 @@ async function loadResult(rid) {
       claims: r.decoded?.payload ?? null,
       header: r.decoded?.header ?? null,
       idToken: r.idToken ?? null,
+      userInfo: r.userInfo ?? null,
+      userInfoError: r.userInfoError ?? null,
     }
   } catch (e) {
     callback.value = { ok: false, message: `Failed to reach backend: ${e.message}` }
@@ -176,8 +178,16 @@ onMounted(() => {
           Verified, but no local user matched National Id {{ callback.nationalId }}.
         </p>
 
+        <template v-if="callback.userInfo">
+          <label>UserInfo profile (iDart)</label>
+          <pre class="mono">{{ JSON.stringify(callback.userInfo, null, 2) }}</pre>
+        </template>
+        <p v-else-if="callback.userInfoError" class="err">
+          UserInfo lookup failed: {{ callback.userInfoError }}
+        </p>
+
         <template v-if="callback.claims">
-          <label>Claims</label>
+          <label>id_token claims</label>
           <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
         </template>
 

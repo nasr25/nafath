@@ -45,6 +45,12 @@ return [
     // Optional key id to place in the JWT header.
     'key_id' => env('NAFATH_KEY_ID'),
 
+    // iDart UserInfo service — called with the Nafath access token (from the
+    // id_token's `accessToken` claim) to obtain the user's profile.
+    //   Test: https://api.id.sa/identityServices/userInfo
+    //   Prod: https://api.id.gov.sa/identityServices/userInfo
+    'userinfo_url' => env('NAFATH_USERINFO_URL', 'https://api.id.sa/identityServices/userInfo'),
+
     'issuer'        => env('NAFATH_ISSUER'),
     'alg'           => env('NAFATH_ALG', 'RS256'),
     'ui_locale'     => env('NAFATH_UI_LOCALE', 'ar'),
