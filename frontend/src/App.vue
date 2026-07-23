@@ -41,11 +41,8 @@ async function loadResult(rid) {
       message: r.verified
         ? 'NAFATH verification successful'
         : r.verifyError || 'Not verified — decoded for inspection only',
-      matched: !!r.matched,
       nationalId: r.nationalId ?? null,
-      comparison: r.comparison ?? [],
       claims: r.decoded?.payload ?? null,
-      header: r.decoded?.header ?? null,
       idToken: r.idToken ?? null,
       userInfo: r.userInfo ?? null,
       userInfoError: r.userInfoError ?? null,
@@ -153,42 +150,33 @@ onMounted(() => {
         <p v-else-if="callback.ok" class="ok">✓ {{ callback.message }}</p>
         <p v-else class="err">✗ {{ callback.message }}</p>
 
-        <!-- DB (old) vs NAFATH (corrected) comparison -->
-        <template v-if="callback.comparison && callback.comparison.length && callback.matched">
-          <div class="row">
-            <label>Database vs NAFATH</label>
-            <span class="muted">National Id: {{ callback.nationalId }}</span>
-          </div>
+        <p v-if="callback.nationalId" class="muted">National Id: {{ callback.nationalId }}</p>
+
+        <!-- User data from the iDart UserInfo service -->
+        <template v-if="callback.userInfo">
+          <label>User data (UserInfo)</label>
           <table class="cmp">
-            <thead>
-              <tr><th>Field</th><th>Database (old)</th><th>NAFATH (corrected)</th></tr>
-            </thead>
             <tbody>
-              <tr v-for="row in callback.comparison" :key="row.field">
-                <td class="fld">{{ row.label }}</td>
-                <td :class="row.match ? 'match' : 'mismatch'">{{ row.database ?? '—' }}</td>
-                <td :class="row.match ? 'match' : 'mismatch'">{{ row.nafath ?? '—' }}</td>
+              <tr v-for="(value, key) in callback.userInfo" :key="key">
+                <td class="fld">{{ key }}</td>
+                <td>{{ value === '' || value === null ? '—' : value }}</td>
               </tr>
             </tbody>
           </table>
-          <p class="muted">Green = value matches NAFATH · Red = differs (needs correcting).</p>
-        </template>
-
-        <p v-else-if="callback.ok && !callback.matched" class="muted">
-          Verified, but no local user matched National Id {{ callback.nationalId }}.
-        </p>
-
-        <template v-if="callback.userInfo">
-          <label>UserInfo profile (iDart)</label>
-          <pre class="mono">{{ JSON.stringify(callback.userInfo, null, 2) }}</pre>
+          <details>
+            <summary class="muted">Raw UserInfo JSON</summary>
+            <pre class="mono">{{ JSON.stringify(callback.userInfo, null, 2) }}</pre>
+          </details>
         </template>
         <p v-else-if="callback.userInfoError" class="err">
           UserInfo lookup failed: {{ callback.userInfoError }}
         </p>
 
         <template v-if="callback.claims">
-          <label>id_token claims</label>
-          <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+          <details>
+            <summary class="muted">id_token claims</summary>
+            <pre class="mono">{{ JSON.stringify(callback.claims, null, 2) }}</pre>
+          </details>
         </template>
 
         <template v-if="callback.idToken">
