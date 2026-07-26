@@ -101,12 +101,19 @@ class NafathController extends Controller
             $payload = $view['decoded']['payload'] ?? [];
             $view['nationalId'] = $payload['sub'] ?? $payload['userid'] ?? null;
 
-            // Verify the id_token signature (non-blocking — data still shown).
-            try {
-                $this->nafath->verifyIdToken($idToken, $state);
-                $view['verified'] = true;
-            } catch (\Throwable $e) {
-                $view['verifyError'] = $e->getMessage(); // service logged the step
+            // Verify the id_token signature (optional; the real authorization is
+            // the access token, validated by iDart UserInfo). Disable with
+            // NAFATH_VERIFY_IDTOKEN=false. verified: true=ok, false=failed,
+            // null=skipped.
+            if (config('nafath.verify_idtoken')) {
+                try {
+                    $this->nafath->verifyIdToken($idToken, $state);
+                    $view['verified'] = true;
+                } catch (\Throwable $e) {
+                    $view['verifyError'] = $e->getMessage(); // service logged the step
+                }
+            } else {
+                $view['verified'] = null;
             }
 
             // The profile lives behind the access token: get it from the

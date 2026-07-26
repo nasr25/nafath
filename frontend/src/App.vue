@@ -35,12 +35,17 @@ async function loadResult(rid) {
       return
     }
     const r = data.result
+    // r.verified: true = ok, false = failed, null = verification skipped
     callback.value = {
-      ok: !!r.verified,
+      ok: r.verified === true,
+      skipped: r.verified === null,
       error: r.errorParam ?? null,
-      message: r.verified
-        ? 'NAFATH verification successful'
-        : r.verifyError || 'Not verified — decoded for inspection only',
+      message:
+        r.verified === true
+          ? 'NAFATH verification successful'
+          : r.verified === null
+            ? 'id_token signature check skipped'
+            : r.verifyError || 'Not verified',
       nationalId: r.nationalId ?? null,
       claims: r.decoded?.payload ?? null,
       idToken: r.idToken ?? null,
@@ -127,7 +132,10 @@ onMounted(() => {
     <header class="head">
       <h1>Nafath OIDC — Result</h1>
       <p class="sub">Displays the decoded &amp; verified NAFATH callback</p>
-      <a class="btn ghost home" href="/">← Home (build request)</a>
+      <div class="actions">
+        <a class="btn ghost" href="/">← Home</a>
+        <a class="btn ghost" href="/_IAM/logout">Logout (IAM SLO)</a>
+      </div>
     </header>
 
     <!-- Optional debug dump (?debug) -->
@@ -148,6 +156,7 @@ onMounted(() => {
       <template v-else>
         <p v-if="callback.error" class="err">IAM returned an error: {{ callback.error }}</p>
         <p v-else-if="callback.ok" class="ok">✓ {{ callback.message }}</p>
+        <p v-else-if="callback.skipped" class="muted">ⓘ {{ callback.message }}</p>
         <p v-else class="err">✗ {{ callback.message }}</p>
 
         <p v-if="callback.nationalId" class="muted">National Id: {{ callback.nationalId }}</p>
@@ -242,7 +251,8 @@ body { margin: 0; background: var(--bg); color: var(--text);
 .head { position: relative; }
 .head h1 { margin: 0; font-size: 26px; }
 .sub { color: var(--muted); margin: 6px 0 24px; }
-.home { position: absolute; top: 0; right: 0; margin: 0; padding: 8px 14px; font-size: 13px; }
+.actions { position: absolute; top: 0; right: 0; display: flex; gap: 8px; }
+.actions .btn { margin: 0; padding: 8px 14px; font-size: 13px; }
 .card { background: var(--card); border: 1px solid var(--line);
   border-radius: 12px; padding: 22px; margin-bottom: 20px; }
 .card.debug { border-color: #a16207; }

@@ -73,6 +73,11 @@ return [
     'jwks_url' => env('NAFATH_JWKS_URL'),
     'jwks_ttl' => (int) env('NAFATH_JWKS_TTL', 3600), // seconds to cache the JWKS
 
+    // Whether to verify the id_token signature. The real authorization is the
+    // access token (validated by iDart UserInfo), so this can be disabled while
+    // the IAM signing cert/JWKS is being finalised. Keep true when you can.
+    'verify_idtoken' => (bool) env('NAFATH_VERIFY_IDTOKEN', true),
+
     // Clock-skew tolerance (seconds) when validating the Id_token timestamps.
     'leeway' => 60,
 
