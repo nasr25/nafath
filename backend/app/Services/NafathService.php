@@ -44,6 +44,13 @@ class NafathService
             'state'         => $state,
         ];
 
+        // Optional. `prompt=login` makes IAM re-authenticate the user even when
+        // it still holds an SSO session, so a login right after a logout proves
+        // whether the IAM session was really ended.
+        if (!empty($cfg['prompt'])) {
+            $payload['prompt'] = $cfg['prompt'];
+        }
+
         // Sign the request JWT (RS256) with OUR private key — must be the
         // IAM-registered certificate's key.
         try {
@@ -82,6 +89,62 @@ class NafathService
             'state'   => $state,
             'nonce'   => $nonce,
         ];
+    }
+
+    /**
+     * Build the URL that ends the IAM (Nafath) session.
+     *
+     * IAM can only terminate a session it can identify. In OIDC mode that means
+     * echoing the id_token we were issued back as `id_token_hint` — redirecting
+     * to the logout endpoint with nothing but `?slo=true` ends OUR session while
+     * IAM keeps its SSO session, which is why the next login then sails straight
+     * through without re-authenticating.
+     *
+     * @param  string|null  $idToken  the raw id_token from the login callback
+     */
+    public function buildLogoutUrl(?string $idToken = null): string
+    {
+        $cfg  = config('nafath');
+        $mode = $cfg['logout_mode'] ?? 'oidc';
+
+        if ($mode === 'slo') {
+            $params = ['slo' => 'true'];
+        } else {
+            if ($idToken === null || $idToken === '') {
+                Log::channel('nafath')->warning(
+                    'logout: no id_token_hint available — IAM will most likely keep its SSO session',
+                );
+            }
+            $params = array_filter([
+                'id_token_hint'            => $idToken,
+                'post_logout_redirect_uri' => $this->postLogoutRedirectUri(),
+            ]);
+        }
+
+        // The configured URL may already carry query parameters (IAM sometimes
+        // registers the SP identifier on it), so pick the separator rather than
+        // blindly appending "?".
+        $base = rtrim((string) $cfg['logout_url'], '?&');
+        $sep  = str_contains($base, '?') ? '&' : '?';
+
+        Log::channel('nafath')->info('logout: building IAM logout URL', [
+            'mode'          => $mode,
+            'endpoint'      => $base,
+            'has_id_token'  => (bool) $idToken,
+        ]);
+
+        return $base . $sep . http_build_query($params);
+    }
+
+    /**
+     * `post_logout_redirect_uri` has to be an absolute URL registered with IAM;
+     * the config allows a site-relative path for convenience.
+     */
+    private function postLogoutRedirectUri(): string
+    {
+        $target = (string) config('nafath.post_logout_redirect');
+
+        return Str::startsWith($target, ['http://', 'https://']) ? $target : url($target);
     }
 
     /**
