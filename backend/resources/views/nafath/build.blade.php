@@ -29,7 +29,12 @@
     .btn.primary { background:var(--primary); }
     .btn.accent { background:var(--accent); margin-top:20px; }
     .btn.ghost { background:transparent; border:1px solid var(--line); color:var(--text); }
-    .logout { position:absolute; top:0; right:0; margin:0; padding:8px 14px; font-size:13px; }
+    /* Sits top-right of the header. Given its own colours rather than .ghost:
+       a transparent border on the dark background made it read as plain text. */
+    .logout { position:absolute; top:0; right:0; margin:0; padding:9px 16px;
+      font-size:13px; font-weight:600; background:rgba(248,113,113,.14);
+      border:1px solid var(--err); color:var(--err); }
+    .logout:hover { background:var(--err); color:var(--bg); }
     .err { color:var(--err); margin-top:14px; }
     .muted { color:var(--muted); font-size:13px; }
     .link { color:#60a5fa; }
@@ -40,7 +45,7 @@
     <header class="head">
       <h1>Nafath OIDC — Test Console</h1>
       <p class="sub">Build &amp; inspect the signed OIDC request sent to IAM (نفاذ)</p>
-      <a class="btn ghost logout" href="/_IAM/logout">Logout (IAM SLO)</a>
+      <a class="btn logout" href="/_IAM/logout">Logout (IAM SLO)</a>
     </header>
 
     <section class="card">

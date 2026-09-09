@@ -134,7 +134,7 @@ onMounted(() => {
       <p class="sub">Displays the decoded &amp; verified NAFATH callback</p>
       <div class="actions">
         <a class="btn ghost" href="/">← Home</a>
-        <a class="btn ghost" href="/_IAM/logout">Logout (IAM SLO)</a>
+        <a class="btn logout" href="/_IAM/logout">Logout (IAM SLO)</a>
       </div>
     </header>
 
@@ -270,6 +270,11 @@ label { font-size: 13px; color: var(--muted); text-transform: uppercase;
   text-decoration: none; display: inline-block; }
 .btn.primary { background: var(--primary); }
 .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--text); }
+/* Not .ghost: its border is near-invisible on the dark background, which made
+   the logout button read as plain text. Own colours so it is actually seen. */
+.logout { background: rgba(248, 113, 113, .14); border: 1px solid var(--err);
+  color: var(--err); font-weight: 600; }
+.logout:hover { background: var(--err); color: var(--bg); }
 .btn:disabled { opacity: .6; cursor: default; }
 .link { background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 13px; }
 .err { color: var(--err); margin-top: 14px; }
