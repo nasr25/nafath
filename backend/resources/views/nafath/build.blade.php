@@ -35,6 +35,9 @@
       font-size:13px; font-weight:600; background:rgba(248,113,113,.14);
       border:1px solid var(--err); color:var(--err); }
     .logout:hover { background:var(--err); color:var(--bg); }
+    .notice { background:rgba(22,163,74,.12); border:1px solid var(--accent);
+      color:#4ade80; border-radius:8px; padding:13px 16px; margin:0 0 20px;
+      font-size:14px; font-weight:600; }
     .err { color:var(--err); margin-top:14px; }
     .muted { color:var(--muted); font-size:13px; }
     .link { color:#60a5fa; }
@@ -47,6 +50,12 @@
       <p class="sub">Build &amp; inspect the signed OIDC request sent to IAM (نفاذ)</p>
       <a class="btn logout" href="/_IAM/logout">Logout (IAM SLO)</a>
     </header>
+
+    {{-- Set by NafathController::logout() once IAM has dispatched Single Logout
+         back to us — i.e. the Nafath session really is gone, not just ours. --}}
+    @if (request()->query('logged_out'))
+      <p class="notice">✓ You have been signed out of NAFATH successfully.</p>
+    @endif
 
     <section class="card">
       @if ($error)
