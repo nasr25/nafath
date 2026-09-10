@@ -23,6 +23,19 @@ return [
     // OIDC): redirect the browser here with ?slo=true to end the IAM session.
     'logout_url' => env('NAFATH_LOGOUT_URL', 'https://www.iam.gov.sa/samlsso'),
 
+    // How the user gets back to us after logging out of IAM.
+    //
+    //   "dispatch" — the guide's flow (§2.2.1): redirect the browser to IAM and
+    //   wait for IAM to call our logout URL back with ?slo=false. This only
+    //   happens once the Service Provider Logout URL is registered with IAM
+    //   (§3.3.3); until then IAM ends the session and leaves the user on its own
+    //   page, and our post-logout redirect never runs.
+    //
+    //   "direct" — do the redirect ourselves. The IAM logout URL is requested by
+    //   the browser in the background and we send the user straight to
+    //   post_logout_redirect, so they never leave our system.
+    'logout_return' => env('NAFATH_LOGOUT_RETURN', 'dispatch'),
+
     // Where to land the user once logout finishes (a public page on the SP).
     'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
 
