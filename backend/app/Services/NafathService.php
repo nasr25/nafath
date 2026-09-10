@@ -44,13 +44,6 @@ class NafathService
             'state'         => $state,
         ];
 
-        // Optional. `prompt=login` makes IAM re-authenticate the user even when
-        // it still holds an SSO session, so a login right after a logout proves
-        // whether the IAM session was really ended.
-        if (!empty($cfg['prompt'])) {
-            $payload['prompt'] = $cfg['prompt'];
-        }
-
         // Sign the request JWT (RS256) with OUR private key — must be the
         // IAM-registered certificate's key.
         try {
@@ -92,59 +85,32 @@ class NafathService
     }
 
     /**
-     * Build the URL that ends the IAM (Nafath) session.
+     * Build the IAM logout URL — the guide's "Direct Logout", which §2.2.2 marks
+     * as applicable to both SAML2 and OIDC:
      *
-     * IAM can only terminate a session it can identify. In OIDC mode that means
-     * echoing the id_token we were issued back as `id_token_hint` — redirecting
-     * to the logout endpoint with nothing but `?slo=true` ends OUR session while
-     * IAM keeps its SSO session, which is why the next login then sails straight
-     * through without re-authenticating.
+     *   INPUT:  https://www.iam.gov.sa/samlsso?slo=true
+     *   OUTPUT: https://serviceprovider.com.sa/logout?slo=false
      *
-     * @param  string|null  $idToken  the raw id_token from the login callback
+     * There is deliberately no `id_token_hint` / `post_logout_redirect_uri` and
+     * no /oidc/logout endpoint — the guide defines none. IAM identifies the
+     * session from its own cookie, so this must be a top-level browser redirect.
      */
-    public function buildLogoutUrl(?string $idToken = null): string
+    public function buildLogoutUrl(): string
     {
-        $cfg  = config('nafath');
-        $mode = $cfg['logout_mode'] ?? 'oidc';
+        $url = trim((string) config('nafath.logout_url'));
 
-        if ($mode === 'slo') {
-            $params = ['slo' => 'true'];
-        } else {
-            if ($idToken === null || $idToken === '') {
-                Log::channel('nafath')->warning(
-                    'logout: no id_token_hint available — IAM will most likely keep its SSO session',
-                );
-            }
-            $params = array_filter([
-                'id_token_hint'            => $idToken,
-                'post_logout_redirect_uri' => $this->postLogoutRedirectUri(),
-            ]);
-        }
+        // §3.3.3 quotes the logout URL with ?slo=true already on it, so merge the
+        // parameter instead of appending — otherwise a fully-specified URL would
+        // come out as "...samlsso?slo=true?slo=true".
+        [$base, $query] = array_pad(explode('?', $url, 2), 2, '');
+        parse_str($query, $params);
+        $params['slo'] = 'true';
 
-        // The configured URL may already carry query parameters (IAM sometimes
-        // registers the SP identifier on it), so pick the separator rather than
-        // blindly appending "?".
-        $base = rtrim((string) $cfg['logout_url'], '?&');
-        $sep  = str_contains($base, '?') ? '&' : '?';
+        $logout = rtrim($base, '?&') . '?' . http_build_query($params);
 
-        Log::channel('nafath')->info('logout: building IAM logout URL', [
-            'mode'          => $mode,
-            'endpoint'      => $base,
-            'has_id_token'  => (bool) $idToken,
-        ]);
+        Log::channel('nafath')->info('logout: IAM logout URL built', ['url' => $logout]);
 
-        return $base . $sep . http_build_query($params);
-    }
-
-    /**
-     * `post_logout_redirect_uri` has to be an absolute URL registered with IAM;
-     * the config allows a site-relative path for convenience.
-     */
-    private function postLogoutRedirectUri(): string
-    {
-        $target = (string) config('nafath.post_logout_redirect');
-
-        return Str::startsWith($target, ['http://', 'https://']) ? $target : url($target);
+        return $logout;
     }
 
     /**

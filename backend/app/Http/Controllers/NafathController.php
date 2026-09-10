@@ -130,14 +130,6 @@ class NafathController extends Controller
             }
         }
 
-        // Keep the raw id_token for logout. OIDC RP-initiated logout has to hand
-        // it back as `id_token_hint` so IAM knows which session to end; without
-        // it IAM keeps its SSO session and the next login skips authentication.
-        if ($idToken) {
-            $request->session()->put('nafath.id_token', $idToken);
-            $request->session()->put('nafath.national_id', $view['nationalId']);
-        }
-
         // Cache the decoded result under a one-time id and hand off to the
         // frontend SPA, which fetches it via result() and renders it.
         $rid = Str::random(40);
@@ -158,11 +150,10 @@ class NafathController extends Controller
      *  - IAM dispatch (?slo=false): IAM is logging the user out of us as part of
      *    a Single Logout it is orchestrating. Kill our session and land on the
      *    public page. (This URL, with ?slo=false, is what IAM has registered.)
-     *  - User-initiated (no `slo`, or slo=true): kill our session, then send the
-     *    browser to IAM's logout endpoint so IAM ends the Nafath SSO session too.
-     *    The id_token stashed at login travels along as `id_token_hint` — that is
-     *    what lets IAM identify the session to terminate. See
-     *    NafathService::buildLogoutUrl().
+     *  - User-initiated (no `slo`, or slo=true): kill our session, then redirect
+     *    the browser to IAM's logout URL with ?slo=true, so IAM ends its own
+     *    session and dispatches logout to the other SPs. Guide §2.2.1,
+     *    "User Logout from Service Provider Using Simplified Logout URI".
      */
     public function logout(Request $request)
     {
@@ -174,10 +165,6 @@ class NafathController extends Controller
             'method' => $request->method(),
             'slo'    => $slo,
         ]);
-
-        // Read the id_token before the session is thrown away — it is the
-        // `id_token_hint` IAM needs to end the right session.
-        $idToken = $request->session()->get('nafath.id_token');
 
         // Terminate our local session either way.
         if (Auth::check()) {
@@ -195,7 +182,7 @@ class NafathController extends Controller
         }
 
         // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
-        $url = $this->nafath->buildLogoutUrl($idToken);
+        $url = $this->nafath->buildLogoutUrl();
         Log::channel('nafath')->info('logout: redirecting to IAM', ['url' => $url]);
         return redirect()->away($url);
     }

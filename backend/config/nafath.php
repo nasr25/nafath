@@ -19,29 +19,17 @@ return [
     // Where IAM returns the user claims (must be registered with IAM).
     'redirect_uri' => env('NAFATH_REDIRECT_URI', 'http://localhost:5173/callback'),
 
-    // IAM logout endpoint. Which one applies depends on `logout_mode` below:
-    //   oidc -> the OIDC RP-initiated logout endpoint (e.g. .../oidc/logout)
-    //   slo  -> the SAML simplified/direct logout endpoint (.../samlsso?slo=true)
-    'logout_url' => env('NAFATH_LOGOUT_URL', 'https://www.iam.gov.sa/oidc/logout'),
-
-    // How to end the IAM session.
-    //
-    //   "oidc" (default) — OIDC RP-initiated logout: hand the id_token we were
-    //   issued back as `id_token_hint`, plus `post_logout_redirect_uri`. IAM can
-    //   only end a session it can identify, so the hint is what actually kills
-    //   the Nafath SSO session.
-    //
-    //   "slo" — the SAML simplified/direct logout (`?slo=true`, no token). Only
-    //   ends the IAM session for SPs that have a SAML session participant; for
-    //   an OIDC SP it typically answers OK while leaving the SSO session alive.
-    //
-    // Confirm with the IAM integration team which endpoint your SP registration
-    // is wired for before changing this.
-    'logout_mode' => env('NAFATH_LOGOUT_MODE', 'oidc'),
+    // IAM "Direct Logout" endpoint (guide §2.2.2 / §3.3.3) — applicable to both
+    // SAML2 and OIDC. The browser is redirected here with ?slo=true; IAM then
+    // dispatches logout to every SP with ?slo=false.
+    //   Production: https://www.iam.gov.sa/samlsso
+    //   Staging:    https://www.iam.sa/samlsso
+    // Must match the environment used for authorize_url — logging out of
+    // production while authenticated on staging does nothing.
+    'logout_url' => env('NAFATH_LOGOUT_URL', 'https://www.iam.gov.sa/samlsso'),
 
     // Where to land the user once logout finishes (a public page on the SP).
-    // Sent to IAM as `post_logout_redirect_uri`, so it must be registered with
-    // IAM. A site-relative path is expanded to an absolute URL.
+    // Local only — the guide defines no post_logout_redirect_uri parameter.
     'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
 
     // Frontend (Vue) application path, mounted under this Laravel site. After a
@@ -51,11 +39,6 @@ return [
 
     // Language shown to the user by IAM: "ar" or "en".
     'ui_locales' => env('NAFATH_UI_LOCALES', 'ar'),
-
-    // Optional OIDC `prompt`. Set to "login" to make IAM re-authenticate the
-    // user even when it still holds an SSO session — the reliable way to prove
-    // a logout really ended the Nafath session.
-    'prompt' => env('NAFATH_PROMPT'),
 
     // response_type must be "id_token" so the response contains claims.
     'response_type' => 'id_token',

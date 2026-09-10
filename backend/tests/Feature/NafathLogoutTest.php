@@ -4,45 +4,59 @@ namespace Tests\Feature;
 
 use Tests\TestCase;
 
+/**
+ * Logout behaviour per the NAFATH Authentication Service Integration Guide v3.3,
+ * §2.2.2 "Direct Logout (Applicable in SAML2 and OIDC)":
+ *   INPUT:  https://www.iam.gov.sa/samlsso?slo=true
+ *   OUTPUT: https://serviceprovider.com.sa/logout?slo=false
+ */
 class NafathLogoutTest extends TestCase
 {
-    public function test_user_initiated_logout_sends_the_id_token_hint_to_iam(): void
+    public function test_user_initiated_logout_redirects_to_iam_with_slo_true(): void
     {
-        config([
-            'nafath.logout_mode'          => 'oidc',
-            'nafath.logout_url'           => 'https://www.iam.gov.sa/oidc/logout',
-            'nafath.post_logout_redirect' => '/',
-        ]);
+        config(['nafath.logout_url' => 'https://www.iam.gov.sa/samlsso']);
 
-        $res = $this->withSession(['nafath.id_token' => 'EYJ.REAL.TOKEN'])->get('/_IAM/logout');
-
-        $res->assertRedirect();
-        $location = $res->headers->get('Location');
-        $this->assertStringContainsString('id_token_hint=EYJ.REAL.TOKEN', $location);
-        $this->assertStringContainsString('post_logout_redirect_uri=', $location);
+        $this->get('/_IAM/logout')
+            ->assertRedirect('https://www.iam.gov.sa/samlsso?slo=true');
     }
 
-    public function test_iam_slo_dispatch_does_not_bounce_back_to_iam(): void
+    public function test_logout_url_already_carrying_slo_is_not_doubled(): void
     {
+        // §3.3.3 quotes the logout URL with the parameter already attached.
+        config(['nafath.logout_url' => 'https://www.iam.gov.sa/samlsso?slo=true']);
+
+        $this->get('/_IAM/logout')
+            ->assertRedirect('https://www.iam.gov.sa/samlsso?slo=true');
+    }
+
+    public function test_staging_environment_is_honoured(): void
+    {
+        config(['nafath.logout_url' => 'https://www.iam.sa/samlsso']);
+
+        $this->get('/_IAM/logout')
+            ->assertRedirect('https://www.iam.sa/samlsso?slo=true');
+    }
+
+    public function test_iam_dispatch_terminates_locally_without_bouncing_back(): void
+    {
+        // IAM calls the SP's registered logout URL with ?slo=false (§2.2.1 step 6.1).
         foreach (['false', 'False', '0'] as $slo) {
             $res = $this->get('/_IAM/logout?slo=' . $slo);
+
             $res->assertRedirect('/');
-            $this->assertStringNotContainsString('iam.gov.sa', (string) $res->headers->get('Location'), "slo={$slo} bounced back to IAM");
+            $this->assertStringNotContainsString(
+                'samlsso',
+                (string) $res->headers->get('Location'),
+                "slo={$slo} bounced back to IAM instead of ending locally",
+            );
         }
     }
 
-    public function test_existing_query_string_on_the_logout_url_is_preserved(): void
+    public function test_local_session_is_destroyed_on_logout(): void
     {
-        config([
-            'nafath.logout_mode' => 'slo',
-            'nafath.logout_url'  => 'https://www.iam.gov.sa/samlsso?spEntityID=abc',
-        ]);
+        $this->withSession(['some.state' => 'x'])->get('/_IAM/logout?slo=false');
 
-        $res = $this->get('/_IAM/logout');
-
-        $this->assertSame(
-            'https://www.iam.gov.sa/samlsso?spEntityID=abc&slo=true',
-            $res->headers->get('Location')
-        );
+        $this->assertGuest();
+        $this->assertNull(session('some.state'));
     }
 }
