@@ -19,17 +19,11 @@ return [
     // Where IAM returns the user claims (must be registered with IAM).
     'redirect_uri' => env('NAFATH_REDIRECT_URI', 'http://localhost:5173/callback'),
 
-    // IAM "Direct Logout" endpoint (guide §2.2.2 / §3.3.3) — applicable to both
-    // SAML2 and OIDC. The browser is redirected here with ?slo=true; IAM then
-    // dispatches logout to every SP with ?slo=false.
-    //   Production: https://www.iam.gov.sa/samlsso
-    //   Staging:    https://www.iam.sa/samlsso
-    // Must match the environment used for authorize_url — logging out of
-    // production while authenticated on staging does nothing.
+    // IAM Single Logout (SLO) endpoint. Direct/simplified logout (applicable to
+    // OIDC): redirect the browser here with ?slo=true to end the IAM session.
     'logout_url' => env('NAFATH_LOGOUT_URL', 'https://www.iam.gov.sa/samlsso'),
 
     // Where to land the user once logout finishes (a public page on the SP).
-    // Local only — the guide defines no post_logout_redirect_uri parameter.
     'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
 
     // Frontend (Vue) application path, mounted under this Laravel site. After a

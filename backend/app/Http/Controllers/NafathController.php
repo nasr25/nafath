@@ -145,15 +145,15 @@ class NafathController extends Controller
     }
 
     /**
-     * Logout. One endpoint, two directions:
+     * IAM Single Logout (SLO) — the "simplified/direct logout URI" flow, which
+     * the guide marks as applicable to OIDC. One endpoint, two directions:
      *
      *  - IAM dispatch (?slo=false): IAM is logging the user out of us as part of
      *    a Single Logout it is orchestrating. Kill our session and land on the
      *    public page. (This URL, with ?slo=false, is what IAM has registered.)
-     *  - User-initiated (no `slo`, or slo=true): kill our session, then redirect
-     *    the browser to IAM's logout URL with ?slo=true, so IAM ends its own
-     *    session and dispatches logout to the other SPs. Guide §2.2.1,
-     *    "User Logout from Service Provider Using Simplified Logout URI".
+     *  - User-initiated (no slo): kill our session, then redirect the browser to
+     *    IAM's logout URL with ?slo=true so IAM ends its session and dispatches
+     *    logout to the other SPs.
      */
     public function logout(Request $request)
     {
@@ -173,16 +173,14 @@ class NafathController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        // IAM is dispatching Single Logout to us — nothing more to do. Anything
-        // that is not an explicit "true" counts as a dispatch: bouncing back to
-        // IAM here would make it dispatch again, and round we go.
-        if ($slo !== null && strtolower((string) $slo) !== 'true') {
-            Log::channel('nafath')->info('logout: IAM SLO dispatch handled', ['slo' => $slo]);
+        // IAM is dispatching Single Logout to us — nothing more to do.
+        if ($slo === 'false') {
+            Log::channel('nafath')->info('logout: IAM SLO dispatch handled (slo=false)');
             return redirect($cfg['post_logout_redirect']);
         }
 
         // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
-        $url = $this->nafath->buildLogoutUrl();
+        $url = rtrim($cfg['logout_url'], '?&') . '?slo=true';
         Log::channel('nafath')->info('logout: redirecting to IAM', ['url' => $url]);
         return redirect()->away($url);
     }

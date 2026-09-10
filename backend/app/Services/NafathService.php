@@ -85,35 +85,6 @@ class NafathService
     }
 
     /**
-     * Build the IAM logout URL — the guide's "Direct Logout", which §2.2.2 marks
-     * as applicable to both SAML2 and OIDC:
-     *
-     *   INPUT:  https://www.iam.gov.sa/samlsso?slo=true
-     *   OUTPUT: https://serviceprovider.com.sa/logout?slo=false
-     *
-     * There is deliberately no `id_token_hint` / `post_logout_redirect_uri` and
-     * no /oidc/logout endpoint — the guide defines none. IAM identifies the
-     * session from its own cookie, so this must be a top-level browser redirect.
-     */
-    public function buildLogoutUrl(): string
-    {
-        $url = trim((string) config('nafath.logout_url'));
-
-        // §3.3.3 quotes the logout URL with ?slo=true already on it, so merge the
-        // parameter instead of appending — otherwise a fully-specified URL would
-        // come out as "...samlsso?slo=true?slo=true".
-        [$base, $query] = array_pad(explode('?', $url, 2), 2, '');
-        parse_str($query, $params);
-        $params['slo'] = 'true';
-
-        $logout = rtrim($base, '?&') . '?' . http_build_query($params);
-
-        Log::channel('nafath')->info('logout: IAM logout URL built', ['url' => $logout]);
-
-        return $logout;
-    }
-
-    /**
      * Verify the Id_token returned by IAM and return its claims.
      *
      * @param  string       $idToken        the Id_token from the callback
