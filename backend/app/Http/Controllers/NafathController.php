@@ -173,16 +173,38 @@ class NafathController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        // IAM is dispatching Single Logout to us — nothing more to do.
+        // IAM is dispatching Single Logout to us — nothing more to do. This is
+        // also where the user lands at the end of their own logout (guide 2.2.1
+        // step 8: "The originating Service Provider redirects the user to the
+        // public page"), so it carries the confirmation flag.
         if ($slo === 'false') {
             Log::channel('nafath')->info('logout: IAM SLO dispatch handled (slo=false)');
-            return redirect($cfg['post_logout_redirect']);
+            return redirect($this->postLogoutUrl());
         }
 
         // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
         $url = rtrim($cfg['logout_url'], '?&') . '?slo=true';
         Log::channel('nafath')->info('logout: redirecting to IAM', ['url' => $url]);
         return redirect()->away($url);
+    }
+
+    /**
+     * The public page to land on after logout, carrying the confirmation flag.
+     *
+     * The flag rides in the query string rather than a session flash: the
+     * session was invalidated moments ago, and this request arrives from IAM
+     * cross-site, where the SameSite=Lax cookie is not guaranteed to survive the
+     * round trip. A query parameter always does.
+     */
+    private function postLogoutUrl(): string
+    {
+        $target = (string) config('nafath.post_logout_redirect');
+
+        [$path, $query] = array_pad(explode('?', $target, 2), 2, '');
+        parse_str($query, $params);
+        $params['logged_out'] = '1';
+
+        return rtrim($path, '?&') . '?' . http_build_query($params);
     }
 
 }
