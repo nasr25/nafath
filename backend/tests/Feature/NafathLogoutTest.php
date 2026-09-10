@@ -37,69 +37,19 @@ class NafathLogoutTest extends TestCase
             ->assertRedirect('https://www.iam.sa/samlsso?slo=true');
     }
 
-    public function test_direct_mode_keeps_the_user_on_our_site(): void
-    {
-        config([
-            'nafath.logout_return'        => 'direct',
-            'nafath.logout_url'           => 'https://www.iam.gov.sa/samlsso',
-            'nafath.post_logout_redirect' => '/',
-        ]);
-
-        $res = $this->get('/_IAM/logout');
-
-        $res->assertOk();
-        // The IAM session is ended by the browser, from a frame.
-        $res->assertSee('https://www.iam.gov.sa/samlsso?slo=true', false);
-        // …and we land the user ourselves rather than waiting for IAM.
-        $res->assertSee('\/?logged_out=1', false);
-    }
-
-    public function test_dispatch_mode_is_the_default_and_redirects_away(): void
-    {
-        config(['nafath.logout_url' => 'https://www.iam.gov.sa/samlsso']);
-
-        $this->get('/_IAM/logout')
-            ->assertRedirect('https://www.iam.gov.sa/samlsso?slo=true');
-    }
-
     public function test_iam_dispatch_terminates_locally_without_bouncing_back(): void
     {
         // IAM calls the SP's registered logout URL with ?slo=false (§2.2.1 step 6.1).
         foreach (['false', 'False', '0'] as $slo) {
             $res = $this->get('/_IAM/logout?slo=' . $slo);
 
-            $res->assertRedirect('/?logged_out=1');
+            $res->assertRedirect('/');
             $this->assertStringNotContainsString(
                 'samlsso',
                 (string) $res->headers->get('Location'),
                 "slo={$slo} bounced back to IAM instead of ending locally",
             );
         }
-    }
-
-    public function test_dispatch_lands_on_the_public_page_with_a_confirmation(): void
-    {
-        config(['nafath.post_logout_redirect' => '/']);
-
-        $this->get('/_IAM/logout?slo=false')
-            ->assertRedirect('/?logged_out=1');
-    }
-
-    public function test_confirmation_flag_is_merged_into_an_existing_query(): void
-    {
-        config(['nafath.post_logout_redirect' => '/home?lang=ar']);
-
-        $this->get('/_IAM/logout?slo=false')
-            ->assertRedirect('/home?lang=ar&logged_out=1');
-    }
-
-    public function test_public_page_shows_the_success_message_only_when_flagged(): void
-    {
-        $this->get('/?logged_out=1')
-            ->assertSee('signed out of NAFATH successfully', false);
-
-        $this->get('/')
-            ->assertDontSee('signed out of NAFATH successfully', false);
     }
 
     public function test_local_session_is_destroyed_on_logout(): void

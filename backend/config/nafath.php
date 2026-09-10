@@ -32,20 +32,6 @@ return [
     // Local only — the guide defines no post_logout_redirect_uri parameter.
     'post_logout_redirect' => env('NAFATH_POST_LOGOUT_REDIRECT', '/'),
 
-    // How the user gets back to us after logging out of IAM.
-    //
-    //   "dispatch" (the guide's flow, §2.2.1): redirect the browser to IAM, and
-    //   IAM brings it back by calling our logout URL with ?slo=false. Requires
-    //   the Service Provider Logout URL to be registered with IAM (§3.3.3) — if
-    //   it is not, IAM ends the session and simply leaves the user on its page.
-    //
-    //   "direct": never leave our site. We end the IAM session in a hidden frame
-    //   and land the user on the public page ourselves. Use when IAM does not
-    //   dispatch back. Caveat: if IAM sends X-Frame-Options/frame-ancestors, or
-    //   the browser blocks third-party cookies, the frame cannot end the IAM
-    //   session and the user is only logged out locally.
-    'logout_return' => env('NAFATH_LOGOUT_RETURN', 'dispatch'),
-
     // Frontend (Vue) application path, mounted under this Laravel site. After a
     // callback the backend caches the decoded result and redirects here with a
     // one-time ?rid= so the SPA can fetch and display it.
