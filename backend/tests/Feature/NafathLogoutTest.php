@@ -46,6 +46,22 @@ class NafathLogoutTest extends TestCase
             ->assertDontSee('signed out of NAFATH successfully', false);
     }
 
+    public function test_redirect_target_may_be_a_link_to_another_system(): void
+    {
+        config(['nafath.post_logout_redirect' => 'https://mysystem.gov.sa/home']);
+
+        $this->get('/_IAM/logout?slo=false')
+            ->assertRedirect('https://mysystem.gov.sa/home?logged_out=1');
+    }
+
+    public function test_link_keeps_its_own_query_parameters(): void
+    {
+        config(['nafath.post_logout_redirect' => 'https://mysystem.gov.sa/home?lang=ar']);
+
+        $this->get('/_IAM/logout?slo=false')
+            ->assertRedirect('https://mysystem.gov.sa/home?lang=ar&logged_out=1');
+    }
+
     public function test_local_session_is_destroyed_on_logout(): void
     {
         $this->withSession(['some.state' => 'x'])->get('/_IAM/logout?slo=false');

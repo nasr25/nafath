@@ -178,8 +178,16 @@ class NafathController extends Controller
         // step 8: "The originating Service Provider redirects the user to the
         // public page"), so it carries the confirmation flag.
         if ($slo === 'false') {
-            Log::channel('nafath')->info('logout: IAM SLO dispatch handled (slo=false)');
-            return redirect($this->postLogoutUrl());
+            $target = $this->postLogoutUrl();
+            Log::channel('nafath')->info('logout: IAM SLO dispatch handled (slo=false)', [
+                'target' => $target,
+            ]);
+
+            // away() for an absolute link so it is emitted verbatim, without the
+            // URL generator trying to resolve it against this app.
+            return Str::startsWith($target, ['http://', 'https://'])
+                ? redirect()->away($target)
+                : redirect($target);
         }
 
         // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
@@ -189,12 +197,18 @@ class NafathController extends Controller
     }
 
     /**
-     * The public page to land on after logout, carrying the confirmation flag.
+     * The page to land on after logout, carrying the confirmation flag.
      *
-     * The flag rides in the query string rather than a session flash: the
-     * session was invalidated moments ago, and this request arrives from IAM
-     * cross-site, where the SameSite=Lax cookie is not guaranteed to survive the
-     * round trip. A query parameter always does.
+     * `post_logout_redirect` may be a path on this site ("/", "/app") or a full
+     * link to another system ("https://mysystem.gov.sa/home"). Either way the
+     * flag is merged into the query string rather than appended, so a target
+     * that already has parameters stays valid.
+     *
+     * The flag rides in the URL rather than a session flash: the session was
+     * invalidated moments ago, and this request arrives from IAM cross-site,
+     * where the SameSite=Lax cookie is not guaranteed to survive the round trip.
+     * A query parameter always does — and it is the only thing that can carry
+     * the message to a different system.
      */
     private function postLogoutUrl(): string
     {
