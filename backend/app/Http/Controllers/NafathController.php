@@ -187,6 +187,19 @@ class NafathController extends Controller
 
         // User-initiated — hand off to IAM to end the IAM session + fan out SLO.
         $url = $this->nafath->buildLogoutUrl();
+
+        // "direct": don't depend on IAM dispatching ?slo=false back to us. End
+        // the IAM session from a hidden frame and land the user ourselves, so
+        // the confirmation is shown on our own page. See config/nafath.php.
+        if (($cfg['logout_return'] ?? 'dispatch') === 'direct') {
+            Log::channel('nafath')->info('logout: direct return', ['iam_url' => $url]);
+
+            return response()->view('nafath.logout', [
+                'iamUrl' => $url,
+                'target' => $this->postLogoutUrl(),
+            ]);
+        }
+
         Log::channel('nafath')->info('logout: redirecting to IAM', ['url' => $url]);
         return redirect()->away($url);
     }
